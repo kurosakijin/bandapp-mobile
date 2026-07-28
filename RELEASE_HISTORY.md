@@ -1,5 +1,14 @@
 # Release History
 
+## 1.1.89 (version code 360) - 2026-07-28
+
+- Raised the built-in Guitar NAM path by a fixed 2.3 dB while preserving the
+  manual Output control and avoiding automatic gain reduction.
+- Preserved palm-muted chord and chug transients by removing duplicate NAM
+  limiting and using bounded headroom through cabinet convolution.
+- Added luminance-aware button text: dark ink on light controls and near-white
+  text on dark controls, including guitar selectors and piano/looper pills.
+
 ## 1.1.88 (version code 359) - 2026-07-28
 
 - Replaced the regular Guitar pedal selector with a searchable NAM Amp picker

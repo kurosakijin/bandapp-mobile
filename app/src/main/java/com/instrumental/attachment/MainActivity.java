@@ -1847,11 +1847,11 @@ public final class MainActivity extends Activity {
         final TextView sound1Pill = transportPill(
                 "Snd 1: " + pianoSoundName(false) + "  ▾");
         styleTogglePill(sound1Pill, false);
-        sound1Pill.setTextColor(Color.WHITE);
+        sound1Pill.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         sound1Pill.setOnClickListener(v -> pianoSoundPopup(false, () -> {
             fullKeysRoute();
             sound1Pill.setText("Snd 1: " + pianoSoundName(false) + "  ▾");
-            sound1Pill.setTextColor(Color.WHITE);
+            sound1Pill.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         }));
 
         fpSound2Pill = transportPill("Sound 2  ▾");
@@ -2115,7 +2115,7 @@ public final class MainActivity extends Activity {
     }
 
     private void styleTogglePill(TextView pill, boolean on) {
-        pill.setTextColor(Color.WHITE);
+        pill.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         pill.setBackground(pillBackground(COLOR_SURFACE_RAISED, on ? COLOR_GREEN : COLOR_BORDER));
     }
 
@@ -2125,7 +2125,7 @@ public final class MainActivity extends Activity {
         fpSound2Pill.setAlpha(dualOn ? 1f : 0.42f);
         fpSound2Pill.setText((dualOn ? "Snd 2: " + pianoSoundName(true) : "Sound 2")
                 + "  ▾");
-        fpSound2Pill.setTextColor(Color.WHITE);
+        fpSound2Pill.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         fpSound2Pill.setBackground(pillBackground(COLOR_SURFACE_RAISED,
                 dualOn ? toneAccentStatic(dualPreset) : COLOR_BORDER));
     }
@@ -2829,7 +2829,7 @@ public final class MainActivity extends Activity {
         final TextView sound1Pill = transportPill(
                 "Snd 1: " + pianoSoundName(false) + "  ▾");
         styleTogglePill(sound1Pill, false);
-        sound1Pill.setTextColor(Color.WHITE);
+        sound1Pill.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         sound1Pill.setOnClickListener(v -> pianoSoundPopup(false, this::showChordMode));
         final TextView layersPill = transportPill("⧉ Layers");
         styleTogglePill(layersPill, layerMode);
@@ -4810,7 +4810,7 @@ public final class MainActivity extends Activity {
     private TextView menuItem(String label, Runnable onClick) {
         TextView t = new TextView(this);
         t.setText(label);
-        t.setTextColor(Color.WHITE);
+        t.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         t.setTextSize(16);
         t.setPadding(dp(14), dp(13), dp(14), dp(13));
         t.setBackground(animatedButtonBackground(
@@ -4944,7 +4944,7 @@ public final class MainActivity extends Activity {
     private TextView recRowButton(String label) {
         TextView t = new TextView(this);
         t.setText(label);
-        t.setTextColor(Color.WHITE);
+        t.setTextColor(contrastTextColor(COLOR_SURFACE));
         t.setTextSize(13);
         t.setGravity(Gravity.CENTER);
         t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -5124,7 +5124,7 @@ public final class MainActivity extends Activity {
     private TextView transportPill(String text) {
         TextView t = new TextView(this);
         t.setText(text);
-        t.setTextColor(Color.WHITE);
+        t.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         t.setTextSize(13);
         t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         t.setPadding(dp(14), dp(8), dp(14), dp(8));
@@ -6485,7 +6485,7 @@ public final class MainActivity extends Activity {
         neuralRow.addView(guitarNamTestButton, new LinearLayout.LayoutParams(
                 dp(116), LinearLayout.LayoutParams.WRAP_CONTENT));
         guitarNamTestStatus = labelText("");
-        guitarNamTestStatus.setTextColor(Color.WHITE);
+        guitarNamTestStatus.setTextColor(COLOR_TEXT);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         statusLp.leftMargin = dp(12);
@@ -6523,7 +6523,7 @@ public final class MainActivity extends Activity {
         TextView neuralHint = labelText(metalRigStyle == 0
                 ? "Screamer · 5153 NAM · Mesa 4x12 IR · Delay"
                 : "Red Fuzz · British high-gain NAM · Lead 800 IR");
-        neuralHint.setTextColor(Color.WHITE);
+        neuralHint.setTextColor(COLOR_TEXT);
         neural.addView(neuralHint, topMargin(matchWrap(), 6));
         Button cabinetPicker = chipButton("Cabinet · " + GUITAR_CAB_NAMES[guitarCabIrIndex]);
         cabinetPicker.setOnClickListener(v -> showGuitarCabinetPicker());
@@ -6589,7 +6589,7 @@ public final class MainActivity extends Activity {
 
         LinearLayout amp = stagePanel("03  AMP · EQ · OUTPUT", toneAccentStatic(currentPreset));
         TextView ampName = labelText(currentPreset.label.toUpperCase(Locale.ROOT));
-        ampName.setTextColor(Color.WHITE);
+        ampName.setTextColor(COLOR_TEXT);
         amp.addView(ampName, matchWrap());
         liveControlView = new LiveControlView(this);
         liveControlView.setControlsChangedListener(this::applyLiveControls);
@@ -6660,7 +6660,9 @@ public final class MainActivity extends Activity {
     private void pushBuiltInMetalRigState() {
         boolean enabled = currentMode == InstrumentMode.ELECTRIC_GUITAR
                 && guitarNamTestOn && guitarNamTestReady;
-        engine.setNam(enabled, 1.0f, 1.0f, 1.0f);
+        // Cabinet convolution and the output safety curve consume a little
+        // headroom. Apply fixed makeup gain here; this is not auto-leveling.
+        engine.setNam(enabled, 1.0f, 1.0f, 1.30f);
         engine.setNamIr(enabled && engine.namIrReady());
     }
 
@@ -6771,7 +6773,7 @@ public final class MainActivity extends Activity {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         TextView text = labelText(label + "  " + Math.round(value * 100) + "%");
-        text.setTextColor(Color.WHITE);
+        text.setTextColor(COLOR_TEXT);
         box.addView(text, matchWrap());
         SeekBar slider = new SeekBar(this);
         slider.setMax(100);
@@ -10061,7 +10063,7 @@ public final class MainActivity extends Activity {
     private TextView iconButton(String glyph, Runnable onClick) {
         TextView t = new TextView(this);
         t.setText(glyph);
-        t.setTextColor(Color.WHITE);
+        t.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         t.setTextSize(22);
         t.setGravity(Gravity.CENTER);
         t.setPadding(dp(10), dp(6), dp(10), dp(6));
@@ -13561,7 +13563,7 @@ public final class MainActivity extends Activity {
     private TextView loopChip(String label) {
         TextView t = new TextView(this);
         t.setText(label);
-        t.setTextColor(Color.WHITE);
+        t.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         t.setTextSize(12);
         t.setGravity(Gravity.CENTER);
         t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -16262,7 +16264,7 @@ public final class MainActivity extends Activity {
         button.setSingleLine(false);
         button.setMinWidth(0);
         button.setPadding(dp(8), 0, dp(8), 0);
-        button.setTextColor(Color.WHITE);
+        button.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
         button.setTypeface(Typeface.create("sans-serif", Typeface.NORMAL));
         button.setStateListAnimator(null);
         button.setBackground(animatedButtonBackground(
@@ -16276,24 +16278,23 @@ public final class MainActivity extends Activity {
         if (tag instanceof TonePreset) {
             accent = toneAccent((TonePreset) tag);
         }
-        button.setBackground(animatedButtonBackground(
-                selected ? darken(accent) : COLOR_SURFACE_RAISED,
-                dp(8), accent));
-        button.setTextColor(Color.WHITE);
+        int fill = selected ? darken(accent) : COLOR_SURFACE_RAISED;
+        button.setBackground(animatedButtonBackground(fill, dp(8), accent));
+        button.setTextColor(contrastTextColor(fill));
     }
 
     private void styleChipButton(Button button, boolean selected) {
+        int fill = selected ? COLOR_TEAL : COLOR_SURFACE_RAISED;
         button.setBackground(animatedButtonBackground(
-                selected ? COLOR_TEAL : COLOR_SURFACE_RAISED,
-                dp(999), selected ? COLOR_GREEN : COLOR_TEAL));
-        button.setTextColor(Color.WHITE);
+                fill, dp(999), selected ? COLOR_GREEN : COLOR_TEAL));
+        button.setTextColor(contrastTextColor(fill));
     }
 
     private void stylePrimaryButton(Button button, boolean running) {
+        int fill = running ? Color.rgb(205, 78, 86) : Color.rgb(77, 205, 201);
         button.setBackground(animatedButtonBackground(
-                running ? Color.rgb(205, 78, 86) : Color.rgb(77, 205, 201),
-                dp(8), running ? COLOR_RED : COLOR_GREEN));
-        button.setTextColor(Color.WHITE);
+                fill, dp(8), running ? COLOR_RED : COLOR_GREEN));
+        button.setTextColor(contrastTextColor(fill));
         // Keep the label in sync with the color so they can never disagree.
         button.setText(running ? "Stop Engine" : "Start Engine");
     }
@@ -16365,6 +16366,17 @@ public final class MainActivity extends Activity {
         return animatedButtonBackground(color, dp(999), strokeColor);
     }
 
+    private int contrastTextColor(int background) {
+        double r = Color.red(background) / 255.0;
+        double g = Color.green(background) / 255.0;
+        double b = Color.blue(background) / 255.0;
+        r = r <= 0.04045 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
+        g = g <= 0.04045 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
+        b = b <= 0.04045 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
+        double luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return luminance > 0.42 ? Color.rgb(14, 34, 48) : Color.rgb(248, 252, 255);
+    }
+
     private Drawable animatedButtonBackground(int fillColor, float radius, int accent) {
         return new RotatingButtonDrawable(fillColor, radius, dp(2), accent);
     }
@@ -16392,20 +16404,8 @@ public final class MainActivity extends Activity {
             int r = Color.red(fillColor);
             int g = Color.green(fillColor);
             int b = Color.blue(fillColor);
-            // Animated controls use an opaque dark face so white labels remain
-            // readable over every point of the bright screen gradient.
-            int luminance = (r * 299 + g * 587 + b * 114) / 1000;
-            if (luminance > 155) {
-                r = 43;
-                g = 120;
-                b = 165;
-            } else if (luminance < 115) {
-                // Preserve selected-state hue, but lift very dark tone colors
-                // enough for the face to read as sky-blue UI rather than navy.
-                r = Math.round(r * 0.70f + 255f * 0.30f);
-                g = Math.round(g * 0.70f + 255f * 0.30f);
-                b = Math.round(b * 0.70f + 255f * 0.30f);
-            }
+            // Keep the requested opaque fill. Callers select black or
+            // near-white labels from this same color's luminance.
             fillPaint.setColor(Color.rgb(r, g, b));
             edgePaint.setStyle(Paint.Style.STROKE);
             edgePaint.setStrokeWidth(this.strokeWidth);

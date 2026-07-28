@@ -201,6 +201,13 @@ float softClip(float value) {
     return std::tanh(value);
 }
 
+float softKneeLimit(float value, float knee, float ceiling) {
+    float magnitude = std::fabs(value);
+    if (magnitude <= knee) return value;
+    float width = std::max(0.001f, ceiling - knee);
+    return std::copysign(knee + width * std::tanh((magnitude - knee) / width), value);
+}
+
 float hardClip(float value, float limit) {
     return clampFloat(value, -limit, limit);
 }
@@ -2625,13 +2632,12 @@ public:
             } else {
                 processed = processGuitar(input, tone);
             }
-            // Mono amp-sim signal, sent equally to both channels (centered).
-            // Soft-knee safety: transparent below 0.72, folds smoothly above
-            // (never the harsh flat-top of a hard clamp).
-            float a = std::fabs(processed);
-            float s = a <= 0.72f
-                    ? processed
-                    : std::copysign(0.72f + 0.26f * std::tanh((a - 0.72f) / 0.26f), processed);
+            // The NAM boost already has its own bounded transfer function.
+            // Limiting it again here flattened dense palm-muted chords before
+            // the captured amp could react to their pick transients.
+            float s = (instrument == kElectricGuitar
+                    && namEnabled_.load(std::memory_order_relaxed))
+                    ? processed : softKneeLimit(processed, 0.72f, 0.98f);
             output[frame * 2] = s;
             output[frame * 2 + 1] = s;
         }
@@ -2646,7 +2652,7 @@ public:
                 // The normal amp path applies control 6 internally; NAM bypasses
                 // that amp, so reconnect the visible rack Volume here.
                 float namLevel = 0.55f + c6_ * 0.75f;
-                delayed = softClip(delayed * namLevel);
+                delayed = softKneeLimit(delayed * namLevel, 0.78f, 1.04f);
                 output[frame * 2] = delayed;
                 output[frame * 2 + 1] = delayed;
             }
@@ -3162,14 +3168,21 @@ private:
             model->process(inputs, outputs, count);
             for (int32_t i = 0; i < count; ++i) {
                 int32_t frame = offset + i;
-                float wet = sanitize(namOutput_[i] * outputGain);
+                float wet = namOutput_[i] * outputGain;
+                if (!std::isfinite(wet)) wet = 0.0f;
+                // NAM captures may legitimately overshoot 0 dBFS internally.
+                // Preserve that transient through the cabinet instead of
+                // hard-clamping it before convolution.
+                wet = clampFloat(wet, -4.0f, 4.0f);
                 if (namIrEnabled_.load(std::memory_order_relaxed)) {
                     wet = processNamIr(wet);
                 }
                 float dryL = stereo[frame * 2];
                 float dryR = stereo[frame * 2 + 1];
-                stereo[frame * 2] = softClip(dryL + (wet - dryL) * mix);
-                stereo[frame * 2 + 1] = softClip(dryR + (wet - dryR) * mix);
+                stereo[frame * 2] = softKneeLimit(
+                        dryL + (wet - dryL) * mix, 0.82f, 1.08f);
+                stereo[frame * 2 + 1] = softKneeLimit(
+                        dryR + (wet - dryR) * mix, 0.82f, 1.08f);
             }
             offset += count;
         }

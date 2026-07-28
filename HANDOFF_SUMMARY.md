@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.88` / version code `359`
+- Current version: `1.1.89` / version code `360`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,18 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Pending Release - NAM Chug Dynamics and UI Contrast
+
+- Added fixed `+2.3 dB` makeup gain to the regular Guitar NAM path without
+  automatic gain adjustment or volume pumping.
+- Removed duplicate pre-NAM limiting that flattened dense palm-muted chords.
+  NAM transients now retain bounded internal headroom through cabinet
+  convolution, followed by a transparent output soft knee near the ceiling.
+- Button labels now derive black or near-white text from the actual fill
+  luminance. Light guitar controls, NAM/IR pickers, piano sound pills, menus,
+  recording controls, and looper chips use dark text; dark fills retain light
+  text.
 
 ## Pending Release - NAM Rig Output Balance
 
