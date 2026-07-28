@@ -197,6 +197,9 @@ public final class MainActivity extends Activity {
     private boolean guitarNamTestOn = true;
     private boolean guitarNamTestReady;
     private boolean guitarNamTestLoading;
+    private boolean guitarCabIrLoading;
+    private int guitarCabLoadGeneration;
+    private Button guitarCabPickerButton;
     private Button guitarNamTestButton;
     private TextView guitarNamTestStatus;
     private int metalRigStyle;
@@ -6578,10 +6581,10 @@ public final class MainActivity extends Activity {
             pushBuiltInMetalRigState();
         });
         cab.addView(cabinetEnabled, matchWrap());
-        Button cabinetPicker = chipButton(
+        guitarCabPickerButton = chipButton(
                 "Cabinet IR · " + GUITAR_CAB_NAMES[guitarCabIrIndex]);
-        cabinetPicker.setOnClickListener(v -> showGuitarCabinetPicker());
-        cab.addView(cabinetPicker, topMargin(matchWrap(), 8));
+        guitarCabPickerButton.setOnClickListener(v -> showGuitarCabinetPicker());
+        cab.addView(guitarCabPickerButton, topMargin(matchWrap(), 8));
         cab.addView(buildRackSlider("Cab level", cabinetIrLevel / 1.5f, value -> {
             cabinetIrLevel = value * 1.5f;
             prefs.edit().putFloat("cabinet_ir_level", cabinetIrLevel).apply();
@@ -6806,6 +6809,43 @@ public final class MainActivity extends Activity {
                     Toast.makeText(this, reason, Toast.LENGTH_LONG).show();
                 }
                 refreshBuiltInMetalRig();
+            });
+        });
+    }
+
+    private void loadBuiltInGuitarCabinet(int cabinetIndex) {
+        final int requestedCab = Math.max(0,
+                Math.min(GUITAR_CAB_ASSETS.length - 1, cabinetIndex));
+        final int generation = ++guitarCabLoadGeneration;
+        guitarCabIrLoading = true;
+        if (guitarCabPickerButton != null) {
+            guitarCabPickerButton.setEnabled(false);
+            guitarCabPickerButton.setText("Loading cabinet...");
+        }
+        beginSoundLoad("Loading cabinet IR...");
+        namLoader.execute(() -> {
+            byte[] bytes = readAsset(GUITAR_CAB_ASSETS[requestedCab]);
+            WavPcm ir = decodeIrWav(bytes);
+            boolean loaded = ir != null && engine.loadNamIr(
+                    ir.samples, ir.frames, ir.channels, ir.rate);
+            handler.post(() -> {
+                if (generation != guitarCabLoadGeneration) return;
+                guitarCabIrLoading = false;
+                finishSoundLoad();
+                if (loaded) {
+                    guitarCabIrIndex = requestedCab;
+                    prefs.edit().putInt(
+                            "guitar_cab_ir_index", requestedCab).apply();
+                    pushBuiltInMetalRigState();
+                } else {
+                    Toast.makeText(this, "Cabinet IR failed to load",
+                            Toast.LENGTH_LONG).show();
+                }
+                if (guitarCabPickerButton != null) {
+                    guitarCabPickerButton.setEnabled(true);
+                    guitarCabPickerButton.setText("Cabinet IR · "
+                            + GUITAR_CAB_NAMES[guitarCabIrIndex]);
+                }
             });
         });
     }
@@ -7274,25 +7314,26 @@ public final class MainActivity extends Activity {
                 row.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
                 row.setOnClickListener(v -> {
                     if (cabinets) {
-                        guitarCabIrIndex = index;
+                        dialog.dismiss();
+                        loadBuiltInGuitarCabinet(index);
+                        return;
+                    }
+                    guitarNamIndex = index;
+                    if (index == 0) {
+                        metalRigStyle = 0;
+                        guitarCabIrIndex = 0;
+                    } else if (index == 1) {
+                        metalRigStyle = 1;
+                        guitarCabIrIndex = 1;
                     } else {
-                        guitarNamIndex = index;
-                        if (index == 0) {
-                            metalRigStyle = 0;
-                            guitarCabIrIndex = 0;
-                        } else if (index == 1) {
-                            metalRigStyle = 1;
-                            guitarCabIrIndex = 1;
-                        } else {
-                            metalRigStyle = -1;
-                            if (index == 4) guitarCabIrIndex = 23;
-                            else if (index == 5) guitarCabIrIndex = 25;
-                            else if (index == 7) {
-                                guitarCabIrIndex = 26;
-                                guitarModOn = true;
-                                guitarModRate = 0.22f;
-                                guitarModDepth = 0.48f;
-                            }
+                        metalRigStyle = -1;
+                        if (index == 4) guitarCabIrIndex = 23;
+                        else if (index == 5) guitarCabIrIndex = 25;
+                        else if (index == 7) {
+                            guitarCabIrIndex = 26;
+                            guitarModOn = true;
+                            guitarModRate = 0.22f;
+                            guitarModDepth = 0.48f;
                         }
                     }
                     guitarNamTestReady = false;

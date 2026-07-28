@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.96` / version code `367`
+- Current version: `1.1.97` / version code `368`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,14 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.97 - Direct Cabinet IR Switching
+
+- Regular Guitar CAB selection no longer reloads the active NAM model.
+- A cabinet tap decodes the selected bundled WAV and loads it directly into the
+  native double-buffered convolution stage.
+- UI state and preferences change only after successful native loading; failures
+  retain the previous cabinet and show an error.
 
 ## Release 1.1.96 - Landing Contrast and Stable Tuner
 

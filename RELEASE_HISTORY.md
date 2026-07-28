@@ -1,5 +1,14 @@
 # Release History
 
+## 1.1.97 (version code 368) - 2026-07-29
+
+- Fixed Guitar Cabinet IR selection changing its label while the previous
+  convolution remained active.
+- Cabinet choices now decode and load the selected WAV directly without
+  redundantly reloading the NAM neural model.
+- The CAB button shows loading state and only updates/persists the cabinet after
+  the native engine confirms that the new IR was accepted.
+
 ## 1.1.96 (version code 367) - 2026-07-29
 
 - Replaced white text on every opaque light landing-page card, feature button,
