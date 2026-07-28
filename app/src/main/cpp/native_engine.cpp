@@ -2627,8 +2627,9 @@ public:
                 processed = processBass(input, tone);
             } else if (namEnabled_.load(std::memory_order_relaxed)) {
                 // A NAM capture is already the amplifier. Feed it the gated DI
-                // instead of stacking the built-in amp simulation ahead of it.
-                processed = processMetalBoost(input);
+                // through the shared compressor/wah front end instead of
+                // stacking the legacy built-in amp simulation ahead of it.
+                processed = processMetalBoost(processGuitarFrontEnd(input));
             } else {
                 processed = processGuitar(input, tone);
             }
@@ -2646,8 +2647,12 @@ public:
                 && namEnabled_.load(std::memory_order_relaxed)) {
             processNam(output, numFrames);
             for (int32_t frame = 0; frame < numFrames; ++frame) {
-                float delayed = processMetalDelay(
-                        (output[frame * 2] + output[frame * 2 + 1]) * 0.5f);
+                float namSignal = (output[frame * 2] + output[frame * 2 + 1]) * 0.5f;
+                // Match perceived loudness per rig after NAM + cabinet. The
+                // tight 5153 capture has much lower RMS than the British model.
+                namSignal *= metalRigStyle_.load(std::memory_order_relaxed) == 0
+                        ? 1.70f : 0.92f;
+                float delayed = processMetalDelay(namSignal);
                 delayed = processNamPostFx(delayed);
                 // The normal amp path applies control 6 internally; NAM bypasses
                 // that amp, so reconnect the visible rack Volume here.
@@ -3245,7 +3250,7 @@ private:
         return drumMetalLp_[ch] * 0.70f;
     }
 
-    float processGuitar(float input, int tone) {
+    float processGuitarFrontEnd(float input) {
         if (guitarCompOn_.load(std::memory_order_relaxed)) {
             float amount = guitarCompAmount_.load(std::memory_order_relaxed);
             float level = std::fabs(input);
@@ -3276,6 +3281,11 @@ private:
             wahLow_ = clampFloat(wahLow_, -4.0f, 4.0f);
             input = softClip(wahBand_ * 2.6f + input * 0.10f);
         }
+        return input;
+    }
+
+    float processGuitar(float input, int tone) {
+        input = processGuitarFrontEnd(input);
         float drive = c1_;
         float bass = c2_;
         float mid = c3_;
@@ -3462,24 +3472,24 @@ private:
 
     float processMetalBoost(float input) {
         if (metalRigStyle_.load(std::memory_order_relaxed) == 1) {
-            // Red Fuzz-style front end: broad-band gain into asymmetric,
-            // two-stage saturation. Keep enough pick transient for the NAM
-            // amp to respond instead of flattening everything into a square.
+            // Tight high-gain overdrive, not fuzz: trim flubby lows, add
+            // controlled mid-focused drive, and preserve the pick transient.
+            metalBoostLow_ += 0.035f * (input - metalBoostLow_);
+            float tight = input - metalBoostLow_ * 0.70f;
             float drive = metalBoostDrive_.load(std::memory_order_relaxed);
-            float biased = input * (2.4f + drive * 10.5f) + 0.08f;
-            float stage1 = softClip(biased);
-            float fuzz = hardClip(stage1 * (1.25f + drive * 1.8f), 0.78f);
-            metalBoostLow_ += 0.055f * (fuzz - metalBoostLow_);
+            float driven = softClip(tight * (1.35f + drive * 4.8f));
             float tone = metalBoostTone_.load(std::memory_order_relaxed);
-            float colored = metalBoostLow_
-                    + (fuzz - metalBoostLow_) * (0.18f + tone * 0.82f);
+            metalBoostToneState_ += (0.12f + tone * 0.55f)
+                    * (driven - metalBoostToneState_);
+            float colored = metalBoostToneState_
+                    + (driven - metalBoostToneState_) * (0.30f + tone * 0.65f);
             float level = metalBoostLevel_.load(std::memory_order_relaxed);
-            return softClip(colored * (0.45f + level * 1.25f));
+            return softKneeLimit(colored * (0.72f + level * 1.40f), 0.82f, 1.08f);
         }
         // Tube Screamer-style metal boost: trim lows before the neural amp,
         // use restrained clipping, then restore level to hit the amp harder.
         metalBoostLow_ += 0.025f * (input - metalBoostLow_);
-        float tight = input - metalBoostLow_ * 0.82f;
+        float tight = input - metalBoostLow_ * 0.68f;
         float drive = metalBoostDrive_.load(std::memory_order_relaxed);
         float clipped = softClip(tight * (1.15f + drive * 3.6f));
         float tone = metalBoostTone_.load(std::memory_order_relaxed);
@@ -3505,7 +3515,8 @@ private:
         metalDelay_[metalDelayWrite_] = softClip(input + echo * feedback);
         metalDelayWrite_ = (metalDelayWrite_ + 1) % size;
         float mix = metalDelayMix_.load(std::memory_order_relaxed);
-        return softClip(input * (1.0f - mix * 0.22f) + echo * mix);
+        // Keep the direct chug at unity; delay is an added post-cab send.
+        return softKneeLimit(input + echo * mix, 0.84f, 1.10f);
     }
 
     float processNamPostFx(float input) {

@@ -191,7 +191,8 @@ public final class MainActivity extends Activity {
     private float guitarDelayMix = 0.22f;
     private boolean guitarRoomOn;
     private float guitarRoomMix = 0.22f;
-    private boolean guitarNamTestOn;
+    private float guitarInputLevel = 0.50f;
+    private boolean guitarNamTestOn = true;
     private boolean guitarNamTestReady;
     private boolean guitarNamTestLoading;
     private Button guitarNamTestButton;
@@ -201,7 +202,7 @@ public final class MainActivity extends Activity {
     private int guitarNamIndex;
     private int guitarCabIrIndex;
     private static final String[] GUITAR_NAM_NAMES = {
-            "5153 High Gain", "British Stack", "Boutique Lead", "AC Chime",
+            "Tight Delay", "High Gain Metal", "Boutique Lead", "AC Chime",
             "American Deluxe", "Jazz Clean", "Ampeg Grind"
     };
     private static final String[] GUITAR_NAM_ASSETS = {
@@ -738,7 +739,11 @@ public final class MainActivity extends Activity {
         guitarDelayMix = prefs.getFloat("guitar_delay_mix", 0.22f);
         guitarRoomOn = prefs.getBoolean("guitar_room_on", false);
         guitarRoomMix = prefs.getFloat("guitar_room_mix", 0.22f);
-        guitarNamTestOn = prefs.getBoolean("guitar_nam_test_on", false);
+        guitarInputLevel = prefs.getFloat("guitar_input_level", 0.50f);
+        // The regular Guitar is now a NAM + cabinet instrument. It no longer
+        // falls back to the legacy pedal amp path between launches.
+        guitarNamTestOn = true;
+        prefs.edit().putBoolean("guitar_nam_test_on", true).apply();
         metalRigStyle = Math.max(0, Math.min(1, prefs.getInt("metal_rig_style", 0)));
         guitarNamIndex = Math.max(0, Math.min(GUITAR_NAM_NAMES.length - 1,
                 prefs.getInt("guitar_nam_index", metalRigStyle == 0 ? 0 : 1)));
@@ -6455,124 +6460,39 @@ public final class MainActivity extends Activity {
                 guitarRoomOn, guitarRoomMix);
     }
 
-    private ScrollView buildGuitarRack() {
+    private View buildGuitarRack() {
+        LinearLayout shell = new LinearLayout(this);
+        shell.setOrientation(LinearLayout.VERTICAL);
         LinearLayout rack = new LinearLayout(this);
         rack.setOrientation(LinearLayout.VERTICAL);
         signalChainView = new SignalChainView(this);
         signalChainView.setChain(new String[] {
                 "IN", "GATE", "COMP", "WAH", "AMP", "CAB", "MOD", "DELAY", "ROOM", "OUT"
         }, toneAccentStatic(currentPreset), 4);
-        rack.addView(signalChainView, new LinearLayout.LayoutParams(
+        shell.addView(signalChainView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(82)));
 
-        LinearLayout neural = stagePanel("METAL NAM TEST · BUILT IN", 0xffd34b58);
-        LinearLayout neuralRow = new LinearLayout(this);
-        neuralRow.setOrientation(LinearLayout.HORIZONTAL);
-        neuralRow.setGravity(Gravity.CENTER_VERTICAL);
-        guitarNamTestButton = chipButton("Metal NAM");
-        styleChipButton(guitarNamTestButton, guitarNamTestOn);
-        guitarNamTestButton.setOnClickListener(v -> {
-            if (guitarNamTestLoading) return;
-            guitarNamTestOn = !guitarNamTestOn;
-            prefs.edit().putBoolean("guitar_nam_test_on", guitarNamTestOn).apply();
-            if (guitarNamTestOn && !guitarNamTestReady) {
-                loadBuiltInMetalRig();
-            } else {
-                pushBuiltInMetalRigState();
-                refreshBuiltInMetalRig();
-            }
-        });
-        neuralRow.addView(guitarNamTestButton, new LinearLayout.LayoutParams(
-                dp(116), LinearLayout.LayoutParams.WRAP_CONTENT));
-        guitarNamTestStatus = labelText("");
-        guitarNamTestStatus.setTextColor(COLOR_TEXT);
-        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(
-                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        statusLp.leftMargin = dp(12);
-        neuralRow.addView(guitarNamTestStatus, statusLp);
-        neural.addView(neuralRow, matchWrap());
-        LinearLayout rigChoices = new LinearLayout(this);
-        rigChoices.setOrientation(LinearLayout.HORIZONTAL);
-        String[] rigNames = {"Tight Delay", "HiGain Fuzz"};
-        for (int i = 0; i < rigNames.length; i++) {
-            final int style = i;
-            Button choice = chipButton(rigNames[i]);
-            metalRigStyleButtons[i] = choice;
-            styleChipButton(choice, metalRigStyle == i);
-            choice.setOnClickListener(v -> {
-                if (guitarNamTestLoading || metalRigStyle == style) return;
-                metalRigStyle = style;
-                guitarNamIndex = style == 0 ? 0 : 1;
-                guitarCabIrIndex = style == 0 ? 0 : 1;
-                guitarNamTestOn = true;
-                guitarNamTestReady = false;
-                prefs.edit().putInt("metal_rig_style", style)
-                        .putInt("guitar_nam_index", guitarNamIndex)
-                        .putInt("guitar_cab_ir_index", guitarCabIrIndex)
-                        .putBoolean("guitar_nam_test_on", true).apply();
-                pushBuiltInMetalRigFx();
-                refreshBuiltInMetalRig();
-                loadBuiltInMetalRig();
-            });
-            LinearLayout.LayoutParams choiceLp = new LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            if (i > 0) choiceLp.leftMargin = dp(8);
-            rigChoices.addView(choice, choiceLp);
-        }
-        neural.addView(rigChoices, topMargin(matchWrap(), 8));
-        TextView neuralHint = labelText(metalRigStyle == 0
-                ? "Screamer · 5153 NAM · Mesa 4x12 IR · Delay"
-                : "Red Fuzz · British high-gain NAM · Lead 800 IR");
-        neuralHint.setTextColor(COLOR_TEXT);
-        neural.addView(neuralHint, topMargin(matchWrap(), 6));
-        Button cabinetPicker = chipButton("Cabinet · " + GUITAR_CAB_NAMES[guitarCabIrIndex]);
-        cabinetPicker.setOnClickListener(v -> showGuitarCabinetPicker());
-        neural.addView(cabinetPicker, topMargin(matchWrap(), 8));
-        LinearLayout boostControls = new LinearLayout(this);
-        boostControls.setOrientation(LinearLayout.HORIZONTAL);
-        boostControls.addView(buildRackSlider("Drive", metalBoostDrive, value -> {
-            metalBoostDrive = value;
-            prefs.edit().putFloat("metal_boost_drive", value).apply();
-            pushBuiltInMetalRigFx();
-        }), rackWeight());
-        boostControls.addView(buildRackSlider("Tone", metalBoostTone, value -> {
-            metalBoostTone = value;
-            prefs.edit().putFloat("metal_boost_tone", value).apply();
-            pushBuiltInMetalRigFx();
-        }), rackWeight());
-        boostControls.addView(buildRackSlider("Level", metalBoostLevel, value -> {
-            metalBoostLevel = value;
-            prefs.edit().putFloat("metal_boost_level", value).apply();
-            pushBuiltInMetalRigFx();
-        }), rackWeight());
-        neural.addView(boostControls, topMargin(matchWrap(), 8));
-        LinearLayout echoControls = new LinearLayout(this);
-        echoControls.setOrientation(LinearLayout.HORIZONTAL);
-        echoControls.addView(buildRackSlider("Delay", metalDelayTime, value -> {
-            metalDelayTime = value;
-            prefs.edit().putFloat("metal_delay_time", value).apply();
-            pushBuiltInMetalRigFx();
-        }), rackWeight());
-        echoControls.addView(buildRackSlider("Repeats", metalDelayFeedback / 0.78f, value -> {
-            metalDelayFeedback = value * 0.78f;
-            prefs.edit().putFloat("metal_delay_feedback", metalDelayFeedback).apply();
-            pushBuiltInMetalRigFx();
-        }), rackWeight());
-        echoControls.addView(buildRackSlider("Delay Mix", metalDelayMix / 0.55f, value -> {
-            metalDelayMix = value * 0.55f;
-            prefs.edit().putFloat("metal_delay_mix", metalDelayMix).apply();
-            pushBuiltInMetalRigFx();
-        }), rackWeight());
-        neural.addView(echoControls, topMargin(matchWrap(), 6));
-        rack.addView(neural, topMargin(matchWrap(), 8));
-        refreshBuiltInMetalRig();
+        // NAM selection now lives in the fixed NAM AMP bar. There is no
+        // duplicate test/bypass panel in the rack.
+        guitarNamTestOn = true;
         pushBuiltInMetalRigFx();
         pushBuiltInMetalRigState();
-        if (guitarNamTestOn && !guitarNamTestReady) loadBuiltInMetalRig();
+        if (!guitarNamTestReady) loadBuiltInMetalRig();
 
-        LinearLayout input = stagePanel("01  INPUT · DYNAMICS", COLOR_GREEN);
-        input.addView(buildGateRow(), matchWrap());
-        input.addView(buildRackToggle("Compressor", guitarCompOn, value -> {
+        LinearLayout input = stagePanel("01  INPUT LEVEL", COLOR_GREEN);
+        input.addView(buildRackSlider("Input", guitarInputLevel, value -> {
+            guitarInputLevel = value;
+            prefs.edit().putFloat("guitar_input_level", value).apply();
+            pushBuiltInMetalRigState();
+        }), matchWrap());
+        rack.addView(input, topMargin(matchWrap(), 8));
+
+        LinearLayout gate = stagePanel("02  NOISE GATE", COLOR_GREEN);
+        gate.addView(buildGateRow(), matchWrap());
+        rack.addView(gate, topMargin(matchWrap(), 8));
+
+        LinearLayout comp = stagePanel("03  COMPRESSOR", 0xff4c9ed9);
+        comp.addView(buildRackToggle("Compressor", guitarCompOn, value -> {
             guitarCompOn = value;
             prefs.edit().putBoolean("guitar_comp_on", value).apply();
             pushGuitarRackFx();
@@ -6580,28 +6500,32 @@ public final class MainActivity extends Activity {
             guitarCompAmount = value;
             prefs.edit().putFloat("guitar_comp_amount", value).apply();
             pushGuitarRackFx();
-        })), topMargin(matchWrap(), 6));
-        rack.addView(input, topMargin(matchWrap(), 8));
+        })), matchWrap());
+        rack.addView(comp, topMargin(matchWrap(), 8));
 
-        LinearLayout wah = stagePanel("02  WAH · FILTER", 0xff2aa36b);
+        LinearLayout wah = stagePanel("04  WAH · MANUAL / MIDI CC11", 0xff2aa36b);
         wah.addView(buildWahRow(), matchWrap());
         rack.addView(wah, topMargin(matchWrap(), 8));
 
-        LinearLayout amp = stagePanel("03  AMP · EQ · OUTPUT", toneAccentStatic(currentPreset));
-        TextView ampName = labelText(currentPreset.label.toUpperCase(Locale.ROOT));
+        LinearLayout amp = stagePanel("05  NAM AMP · EQ", toneAccentStatic(currentPreset));
+        TextView ampName = labelText(GUITAR_NAM_NAMES[guitarNamIndex].toUpperCase(Locale.ROOT));
         ampName.setTextColor(COLOR_TEXT);
         amp.addView(ampName, matchWrap());
         liveControlView = new LiveControlView(this);
+        liveControlView.setVisibleFaders(5);
         liveControlView.setControlsChangedListener(this::applyLiveControls);
         amp.addView(liveControlView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(245)));
         rack.addView(amp, topMargin(matchWrap(), 8));
 
-        LinearLayout cab = stagePanel("04  SPEAKER · CABINET", 0xffdf9d32);
-        cab.addView(buildCabRow(), matchWrap());
+        LinearLayout cab = stagePanel("06  CABINET · IR", 0xffdf9d32);
+        Button cabinetPicker = chipButton(
+                "Cabinet IR · " + GUITAR_CAB_NAMES[guitarCabIrIndex]);
+        cabinetPicker.setOnClickListener(v -> showGuitarCabinetPicker());
+        cab.addView(cabinetPicker, matchWrap());
         rack.addView(cab, topMargin(matchWrap(), 8));
 
-        LinearLayout mod = stagePanel("05  MODULATION · CHORUS", 0xff7a62df);
+        LinearLayout mod = stagePanel("07  MODULATION · CHORUS", 0xff7a62df);
         mod.addView(buildRackToggle("Chorus", guitarModOn, value -> {
             guitarModOn = value;
             prefs.edit().putBoolean("guitar_mod_on", value).apply();
@@ -6617,7 +6541,7 @@ public final class MainActivity extends Activity {
         })), matchWrap());
         rack.addView(mod, topMargin(matchWrap(), 8));
 
-        LinearLayout delay = stagePanel("06  DELAY · ECHO", 0xffd75b76);
+        LinearLayout delay = stagePanel("08  DELAY · ECHO", 0xffd75b76);
         delay.addView(buildRackToggle("Delay", guitarDelayOn, value -> {
             guitarDelayOn = value;
             prefs.edit().putBoolean("guitar_delay_on", value).apply();
@@ -6637,7 +6561,7 @@ public final class MainActivity extends Activity {
         })), matchWrap());
         rack.addView(delay, topMargin(matchWrap(), 8));
 
-        LinearLayout room = stagePanel("07  ROOM · REVERB", 0xff278bc2);
+        LinearLayout room = stagePanel("09  ROOM · REVERB", 0xff278bc2);
         room.addView(buildRackToggle("Room", guitarRoomOn, value -> {
             guitarRoomOn = value;
             prefs.edit().putBoolean("guitar_room_on", value).apply();
@@ -6649,12 +6573,37 @@ public final class MainActivity extends Activity {
         })), matchWrap());
         rack.addView(room, topMargin(matchWrap(), 8));
 
+        LinearLayout output = stagePanel("10  APP OUTPUT LEVEL", COLOR_AMBER);
+        output.addView(buildRackSlider("Output", liveControlValues[5], value -> {
+            liveControlValues[5] = value;
+            applyLiveControls(liveControlValues);
+        }), matchWrap());
+        rack.addView(output, topMargin(matchWrap(), 8));
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.addView(rack, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
+        shell.addView(scroll, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        View[] chainTargets = {
+                input, gate, comp, wah, amp, cab, mod, delay, room, output
+        };
+        for (int i = 0; i < chainTargets.length; i++) {
+            chainTargets[i].setVisibility(i == 4 ? View.VISIBLE : View.GONE);
+        }
+        signalChainView.setOnStageSelected(index -> {
+            if (index < 0 || index >= chainTargets.length) return;
+            TransitionManager.beginDelayedTransition(rack);
+            for (int i = 0; i < chainTargets.length; i++) {
+                chainTargets[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
+            }
+            signalChainView.setHighlight(index);
+            scroll.smoothScrollTo(0, 0);
+        });
         pushGuitarRackFx();
-        return scroll;
+        return shell;
     }
 
     private void pushBuiltInMetalRigState() {
@@ -6662,7 +6611,8 @@ public final class MainActivity extends Activity {
                 && guitarNamTestOn && guitarNamTestReady;
         // Cabinet convolution and the output safety curve consume a little
         // headroom. Apply fixed makeup gain here; this is not auto-leveling.
-        engine.setNam(enabled, 1.0f, 1.0f, 1.30f);
+        float inputGain = 0.30f + guitarInputLevel * 1.70f;
+        engine.setNam(enabled, 1.0f, inputGain, 1.60f);
         engine.setNamIr(enabled && engine.namIrReady());
     }
 
@@ -6684,7 +6634,7 @@ public final class MainActivity extends Activity {
             else if (guitarNamTestOn && guitarNamTestReady) {
                 status = metalRigStyle == 0
                         ? "READY · Tight Delay active"
-                        : "READY · HiGain Fuzz active";
+                        : "READY · High Gain Metal active";
             }
             else if (guitarNamTestReady) status = "Ready · bypassed";
             else status = "Tap to load the built-in test rig";
@@ -7098,7 +7048,9 @@ public final class MainActivity extends Activity {
 
         soundBarText = new TextView(this);
         soundBarText.setText(currentMode == InstrumentMode.PIANO
-                ? pianoSoundName(false) : currentPreset.label);
+                ? pianoSoundName(false)
+                : (currentMode == InstrumentMode.ELECTRIC_GUITAR
+                    ? GUITAR_NAM_NAMES[guitarNamIndex] : currentPreset.label));
         soundBarText.setTextColor(COLOR_TEXT);
         soundBarText.setTextSize(15);
         soundBarText.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
@@ -7187,13 +7139,24 @@ public final class MainActivity extends Activity {
                 styleChipButton(row, selected);
                 row.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
                 row.setOnClickListener(v -> {
-                    if (cabinets) guitarCabIrIndex = index;
-                    else guitarNamIndex = index;
+                    if (cabinets) {
+                        guitarCabIrIndex = index;
+                    } else {
+                        guitarNamIndex = index;
+                        if (index == 0) {
+                            metalRigStyle = 0;
+                            guitarCabIrIndex = 0;
+                        } else if (index == 1) {
+                            metalRigStyle = 1;
+                            guitarCabIrIndex = 1;
+                        }
+                    }
                     guitarNamTestOn = true;
                     guitarNamTestReady = false;
                     prefs.edit()
                             .putInt("guitar_nam_index", guitarNamIndex)
                             .putInt("guitar_cab_ir_index", guitarCabIrIndex)
+                            .putInt("metal_rig_style", metalRigStyle)
                             .putBoolean("guitar_nam_test_on", true)
                             .apply();
                     if (soundBarText != null) {
@@ -15582,11 +15545,15 @@ public final class MainActivity extends Activity {
     private void updateSummaryText() {
         if (toneText != null) {
             toneText.setText(currentMode == InstrumentMode.PIANO
-                    ? pianoSoundName(false) : currentPreset.label);
+                    ? pianoSoundName(false)
+                    : (currentMode == InstrumentMode.ELECTRIC_GUITAR
+                        ? GUITAR_NAM_NAMES[guitarNamIndex] : currentPreset.label));
         }
         if (soundBarText != null) {
             soundBarText.setText(currentMode == InstrumentMode.PIANO
-                    ? pianoSoundName(false) : currentPreset.label);
+                    ? pianoSoundName(false)
+                    : (currentMode == InstrumentMode.ELECTRIC_GUITAR
+                        ? GUITAR_NAM_NAMES[guitarNamIndex] : currentPreset.label));
         }
     }
 
@@ -16646,6 +16613,7 @@ public final class MainActivity extends Activity {
         private float levelDb = -120.0f;
         private float pitchHz = 0.0f;
         private int activeFader = -1;
+        private int visibleFaders = 6;
         private float phase;
 
         LiveControlView(Context context) {
@@ -16666,6 +16634,11 @@ public final class MainActivity extends Activity {
                 return;
             }
             System.arraycopy(newValues, 0, values, 0, 6);
+            invalidate();
+        }
+
+        void setVisibleFaders(int count) {
+            visibleFaders = Math.max(1, Math.min(6, count));
             invalidate();
         }
 
@@ -16811,13 +16784,13 @@ public final class MainActivity extends Activity {
             float top = faderTopPx(d);
             float len = faderLenPx(d);
             float bottom = top + len;
-            float colW = (width - 2.0f * PAD * d) / 6.0f;
+            float colW = (width - 2.0f * PAD * d) / visibleFaders;
             float trackW = 6.0f * d;
             float thumbW = Math.min(34.0f * d, colW * 0.7f);
             float thumbH = 13.0f * d;
             float trackRadius = trackW / 2.0f;
 
-            for (int i = 0; i < 6; i++) {
+            for (int i = 0; i < visibleFaders; i++) {
                 float cx = PAD * d + colW * (i + 0.5f);
                 float thumbY = bottom - values[i] * len;
                 boolean active = i == activeFader;
@@ -16880,8 +16853,8 @@ public final class MainActivity extends Activity {
             if (y < top - 30.0f * d || y > bottom + 34.0f * d) {
                 return -1;
             }
-            float colW = (width - 2.0f * PAD * d) / 6.0f;
-            for (int i = 0; i < 6; i++) {
+            float colW = (width - 2.0f * PAD * d) / visibleFaders;
+            for (int i = 0; i < visibleFaders; i++) {
                 float cx = PAD * d + colW * (i + 0.5f);
                 if (Math.abs(x - cx) <= colW * 0.5f) {
                     return i;
@@ -20490,12 +20463,18 @@ public final class MainActivity extends Activity {
     }
 
     private static final class SignalChainView extends View {
+        interface StageListener {
+            void onStageSelected(int index);
+        }
+
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF rect = new RectF();
         private String[] labels = new String[0];
         private int accent = Color.rgb(45, 178, 168);
         private int highlight = -1;
+        private StageListener stageListener;
+        private int pressedStage = -1;
 
         SignalChainView(Context context) {
             super(context);
@@ -20513,6 +20492,67 @@ public final class MainActivity extends Activity {
         void setAccent(int accent) {
             this.accent = accent;
             invalidate();
+        }
+
+        void setHighlight(int highlight) {
+            this.highlight = highlight;
+            invalidate();
+        }
+
+        void setOnStageSelected(StageListener listener) {
+            this.stageListener = listener;
+            setClickable(listener != null);
+        }
+
+        private int stageAt(float x) {
+            if (labels.length == 0 || getWidth() <= 0) return -1;
+            float d = getResources().getDisplayMetrics().density;
+            float pad = 6 * d;
+            float usable = getWidth() - 2 * pad;
+            if (x < pad || x > getWidth() - pad || usable <= 0f) return -1;
+            return Math.max(0, Math.min(labels.length - 1,
+                    (int) ((x - pad) / (usable / labels.length))));
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    pressedStage = stageAt(event.getX());
+                    if (pressedStage < 0) return false;
+                    getParent().requestDisallowInterceptTouchEvent(true);
+                    invalidate();
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    int stage = stageAt(event.getX());
+                    if (stage != pressedStage) {
+                        pressedStage = stage;
+                        invalidate();
+                    }
+                    return true;
+                case MotionEvent.ACTION_UP:
+                    int selected = stageAt(event.getX());
+                    if (selected >= 0 && selected == pressedStage) {
+                        highlight = selected;
+                        performClick();
+                        if (stageListener != null) stageListener.onStageSelected(selected);
+                    }
+                    pressedStage = -1;
+                    invalidate();
+                    return true;
+                case MotionEvent.ACTION_CANCEL:
+                    pressedStage = -1;
+                    invalidate();
+                    return true;
+                default:
+                    return super.onTouchEvent(event);
+            }
+        }
+
+        @Override
+        public boolean performClick() {
+            super.performClick();
+            return true;
         }
 
         @Override
@@ -20536,9 +20576,10 @@ public final class MainActivity extends Activity {
             for (int i = 0; i < n; i++) {
                 float cx = pad + colW * (i + 0.5f);
                 boolean hi = i == highlight;
+                boolean pressed = i == pressedStage;
                 rect.set(cx - box / 2, cy - box / 2, cx + box / 2, cy + box / 2);
                 paint.setStyle(Paint.Style.FILL);
-                paint.setColor(COLOR_SKY_CONTROL);
+                paint.setColor(pressed ? COLOR_SKY_CONTROL_STRONG : COLOR_SKY_CONTROL);
                 canvas.drawRoundRect(rect, 8 * d, 8 * d, paint);
                 paint.setStyle(Paint.Style.STROKE);
                 paint.setStrokeWidth((hi ? 2.2f : 1.2f) * d);

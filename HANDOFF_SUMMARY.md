@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.89` / version code `360`
+- Current version: `1.1.90` / version code `361`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,23 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Pending Release - Permanent NAM Guitar and Stage Tabs
+
+- Regular Guitar now always loads and enables its selected NAM amp and cabinet.
+  Removed the duplicate Metal NAM test/bypass panel and all legacy preset-label
+  overwrite paths.
+- Moved `Tight Delay` and `High Gain Metal` into the NAM Amp selector. Tight
+  Delay has preset-specific post-cab makeup, a less destructive low cut, and a
+  unity dry delay path. High Gain Metal replaces fuzz clipping with controlled,
+  transient-preserving overdrive.
+- The fixed signal-chain strip is now an animated stage-tab controller. Each
+  tab opens only its real processing controls: Input, Gate, Compressor, Wah,
+  NAM Amp/EQ, Cabinet IR, Chorus, Delay, Room, or app Output.
+- Added persisted NAM input level and a final app guitar output level independent
+  of Android media volume. The Amp tab exposes only Gain/EQ/Presence.
+- Compressor and Wah now process before NAM. Wah remains manually controllable
+  and responds to USB-C or Bluetooth MIDI expression CC11.
 
 ## Pending Release - NAM Chug Dynamics and UI Contrast
 

@@ -1,5 +1,17 @@
 # Release History
 
+## 1.1.90 (version code 361) - 2026-07-28
+
+- Made NAM and cabinet processing permanent in regular Guitar mode and moved
+  Tight Delay and High Gain Metal into the NAM Amp selector.
+- Rebalanced Tight Delay and replaced the old fuzz front end with a tight metal
+  overdrive that preserves pick attack.
+- Converted the fixed signal chain into animated stage tabs with dedicated
+  controls for Input, Gate, Compressor, Wah, Amp, Cabinet, Modulation, Delay,
+  Room, and app Output.
+- Routed Compressor and manual/USB-C/Bluetooth MIDI wah before NAM and separated
+  app guitar output level from Android media volume.
+
 ## 1.1.89 (version code 360) - 2026-07-28
 
 - Raised the built-in Guitar NAM path by a fixed 2.3 dB while preserving the
