@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- beamed eighth notes (themed-icon silhouette) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M32.5,72 a7.5,5.5 0 1,0 15,0 a7.5,5.5 0 1,0 -15,0 Z M54.5,66 a7.5,5.5 0 1,0 15,0 a7.5,5.5 0 1,0 -15,0 Z M45,39 h4 v33 h-4 z M67,32 h4 v34 h-4 z M45,39 L71,32 L71,40 L45,47 Z" />
+</vector>

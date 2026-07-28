@@ -1,0 +1,83 @@
+plugins {
+    id "com.android.application"
+}
+
+// Release signing. The key must NEVER change once an APK is distributed:
+// Android refuses an update signed by a different key, and the only way out is
+// uninstalling — which wipes SharedPreferences (kit layouts, chord songs,
+// favorites). Back up bandapp-release.jks and keystore.properties.
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file("keystore.properties")
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+android {
+    namespace "com.instrumental.attachment"
+    compileSdk 37
+
+    signingConfigs {
+        release {
+            if (keystoreProps.containsKey("storeFile")) {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+            }
+        }
+    }
+
+    defaultConfig {
+        applicationId "com.instrumental.attachment"
+        minSdk 26
+        // targetSdk stays at 35: starting with targetSdk 36, Android 16 IGNORES
+        // screenOrientation locks on large screens and rotates the app to
+        // portrait. 35 keeps the landscape lock honored everywhere.
+        targetSdk 35
+        versionCode 359
+        versionName "1.1.88"
+
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17 -Wall -Wextra"
+                arguments "-DANDROID_STL=c++_shared"
+            }
+        }
+        // Ship arm64 only: every target device is 64-bit ARM. Drops the x86/
+        // x86_64 emulator ABIs and legacy armeabi-v7a (~5 MB of native libs).
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            // Left off deliberately: the app is mostly native audio + one very
+            // large Activity, so shrinking buys little and risks stripping the
+            // JNI callbacks and enum-name-keyed prefs (favorites, presets).
+            minifyEnabled false
+        }
+    }
+
+    // assembleRelease runs lintVital by default, which needs to download
+    // lint-gradle — impossible in this offline-only toolchain.
+    lint {
+        checkReleaseBuilds false
+    }
+
+    buildFeatures {
+        prefab true
+    }
+}
+
+dependencies {
+    implementation "com.google.oboe:oboe:1.10.0"
+}

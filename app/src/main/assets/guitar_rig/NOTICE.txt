@@ -1,0 +1,42 @@
+Built-in Metal NAM Test assets
+
+Source:
+https://github.com/tone-3000/neural-amp-modeler-wasm
+
+Model:
+ui/public/models/5153.nam
+
+Cabinet impulse response:
+ui/public/irs/mesa.wav
+
+Second built-in fuzz rig:
+ui/public/models/jcm.nam
+ui/public/irs/celestion.wav
+
+Additional NAM amp models:
+ui/public/models/ac10.nam
+ui/public/models/ampeg.nam
+ui/public/models/deluxe.nam
+ui/public/models/dumble.nam
+ui/public/models/jc.nam
+
+The NAM models and original demo IRs above are distributed under the included
+MIT License.
+
+Additional cabinet library:
+Jester Dyne Productions Brutal IR Pack (15 cabinet IRs)
+https://www.jester-dyne-productions.com/brutal-ir-pack/
+
+Jester Dyne Productions Emerald IR Pack (6 cabinet IRs)
+https://www.jester-dyne-productions.com/emerald-ir-pack/
+
+The Brutal pack is released as CC0/public domain. Both packs are explicitly
+free for commercial use and redistribution. Asset filenames were normalized
+for the Android package; the audio data is otherwise unchanged.
+
+The source repository is distributed under the MIT License. The complete
+license text is included beside this notice as LICENSE.txt.
+
+These files are bundled as a compatibility test rig. Product and equipment
+names describe the source capture or cabinet voicing and do not imply
+endorsement.
