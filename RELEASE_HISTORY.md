@@ -1,5 +1,12 @@
 # Release History
 
+## 1.1.94 (version code 365) - 2026-07-29
+
+- Restored the former Guitar chorus pedal choices as Classic, Warm, and Shimmer
+  presets inside the MOD signal-chain tab.
+- Chorus preset selection now enables the live chorus processor, highlights the
+  active choice, updates Rate and Depth controls, and persists the setting.
+
 ## 1.1.93 (version code 364) - 2026-07-29
 
 - Reduced live Guitar input latency with exclusive-stream preference, smaller

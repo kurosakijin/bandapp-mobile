@@ -186,6 +186,7 @@ public final class MainActivity extends Activity {
     private boolean guitarModOn;
     private float guitarModRate = 0.25f;
     private float guitarModDepth = 0.30f;
+    private int guitarChorusPreset;
     private boolean guitarDelayOn;
     private float guitarDelayTime = 0.32f;
     private float guitarDelayFeedback = 0.28f;
@@ -749,6 +750,8 @@ public final class MainActivity extends Activity {
         guitarModOn = prefs.getBoolean("guitar_mod_on", false);
         guitarModRate = prefs.getFloat("guitar_mod_rate", 0.25f);
         guitarModDepth = prefs.getFloat("guitar_mod_depth", 0.30f);
+        guitarChorusPreset = Math.max(0, Math.min(2,
+                prefs.getInt("guitar_chorus_preset", 0)));
         guitarDelayOn = prefs.getBoolean("guitar_delay_on", false);
         guitarDelayTime = prefs.getFloat("guitar_delay_time", 0.32f);
         guitarDelayFeedback = prefs.getFloat("guitar_delay_feedback", 0.28f);
@@ -6579,19 +6582,59 @@ public final class MainActivity extends Activity {
         rack.addView(cab, topMargin(matchWrap(), 8));
 
         LinearLayout mod = stagePanel("07  MODULATION · CHORUS", 0xff7a62df);
-        mod.addView(buildRackToggle("Chorus", guitarModOn, value -> {
-            guitarModOn = value;
-            prefs.edit().putBoolean("guitar_mod_on", value).apply();
+        Button chorusToggle = chipButton("✓ CHORUS");
+        styleChipButton(chorusToggle, guitarModOn);
+        chorusToggle.setOnClickListener(v -> {
+            guitarModOn = !guitarModOn;
+            prefs.edit().putBoolean("guitar_mod_on", guitarModOn).apply();
+            styleChipButton(chorusToggle, guitarModOn);
             pushGuitarRackFx();
-        }, buildRackSlider("Rate", guitarModRate, value -> {
+        });
+        mod.addView(chorusToggle, matchWrap());
+
+        View chorusRate = buildRackSlider("Rate", guitarModRate, value -> {
             guitarModRate = value;
             prefs.edit().putFloat("guitar_mod_rate", value).apply();
             pushGuitarRackFx();
-        }), buildRackSlider("Depth", guitarModDepth, value -> {
+        });
+        View chorusDepth = buildRackSlider("Depth", guitarModDepth, value -> {
             guitarModDepth = value;
             prefs.edit().putFloat("guitar_mod_depth", value).apply();
             pushGuitarRackFx();
-        })), matchWrap());
+        });
+        LinearLayout chorusPresets = new LinearLayout(this);
+        chorusPresets.setOrientation(LinearLayout.HORIZONTAL);
+        String[] chorusNames = {"Classic", "Warm", "Shimmer"};
+        float[] chorusRates = {0.22f, 0.14f, 0.38f};
+        float[] chorusDepths = {0.48f, 0.35f, 0.62f};
+        Button[] chorusButtons = new Button[chorusNames.length];
+        for (int i = 0; i < chorusNames.length; i++) {
+            final int preset = i;
+            Button button = chipButton(chorusNames[i]);
+            chorusButtons[i] = button;
+            styleChipButton(button, guitarChorusPreset == i);
+            button.setOnClickListener(v -> {
+                guitarChorusPreset = preset;
+                guitarModOn = true;
+                prefs.edit()
+                        .putInt("guitar_chorus_preset", preset)
+                        .putBoolean("guitar_mod_on", true)
+                        .apply();
+                styleChipButton(chorusToggle, true);
+                for (int j = 0; j < chorusButtons.length; j++) {
+                    styleChipButton(chorusButtons[j], j == preset);
+                }
+                setRackSliderValue(chorusRate, chorusRates[preset]);
+                setRackSliderValue(chorusDepth, chorusDepths[preset]);
+            });
+            chorusPresets.addView(button, chipParams(i == chorusNames.length - 1));
+        }
+        mod.addView(chorusPresets, topMargin(matchWrap(), 8));
+        LinearLayout chorusControls = new LinearLayout(this);
+        chorusControls.setOrientation(LinearLayout.HORIZONTAL);
+        chorusControls.addView(chorusRate, rackWeight());
+        chorusControls.addView(chorusDepth, rackWeight());
+        mod.addView(chorusControls, topMargin(matchWrap(), 8));
         rack.addView(mod, topMargin(matchWrap(), 8));
 
         LinearLayout delay = stagePanel("08  DELAY · ECHO", 0xffd75b76);
@@ -6805,6 +6848,18 @@ public final class MainActivity extends Activity {
         });
         box.addView(slider, matchWrap());
         return box;
+    }
+
+    private void setRackSliderValue(View control, float value) {
+        if (!(control instanceof ViewGroup)) return;
+        ViewGroup group = (ViewGroup) control;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child instanceof SeekBar) {
+                ((SeekBar) child).setProgress(Math.round(value * 100f));
+                return;
+            }
+        }
     }
 
     private View buildWahRow() {

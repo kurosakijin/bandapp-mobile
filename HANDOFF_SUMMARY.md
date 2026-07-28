@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.93` / version code `364`
+- Current version: `1.1.94` / version code `365`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,13 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.94 - Restored Guitar Chorus Pedals
+
+- Restored Classic, Warm, and Shimmer chorus choices from the former Guitar
+  pedal catalog inside the modern MOD signal-chain stage.
+- Selecting a chorus preset enables the effect, highlights the active preset,
+  applies its live Rate and Depth values, and saves the configuration.
 
 ## Release 1.1.93 - Guitar Latency, Live NAM Controls, and Stage Bypass
 
