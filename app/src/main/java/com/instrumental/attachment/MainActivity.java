@@ -203,10 +203,11 @@ public final class MainActivity extends Activity {
     private int guitarNamIndex;
     private int guitarCabIrIndex;
     private float cabinetIrLevel = 1.0f;
+    private float virtualGuitarOutputLevel = 1.0f;
     private static final String[] GUITAR_NAM_NAMES = {
-            "Metal · Tight 5153", "Metal · High Gain JCM", "Rock · Boutique Lead",
-            "Rock · AC Chime", "Clean · American Deluxe",
-            "Jazz / Chorus / Rhodes · JC Clean", "Bass · Ampeg Warm"
+            "Metal - Tight 5153", "Metal - High Gain JCM", "Rock - Boutique Lead",
+            "Rock - AC Chime", "Clean - American Deluxe",
+            "Jazz / Chorus / Rhodes - JC Clean", "Bass - Ampeg Warm"
     };
     private static final String[] GUITAR_NAM_ASSETS = {
             "guitar_rig/metal_5153.nam", "guitar_rig/fuzz_jcm.nam",
@@ -224,7 +225,10 @@ public final class MainActivity extends Activity {
             "Metal · Brutal Aggressive", "Jazz · Greenback Warm",
             "Rock · Greenback Edge", "Clean · Greenback Bright",
             "Rhodes · Greenback Cream", "Clean · Greenback Body",
-            "Chorus-ready · Greenback Cut"
+            "Chorus-ready · Greenback Cut",
+            "Clean - Jensen SM57 Center", "Clean Warm - Jensen e606 Center",
+            "Jazz - Jensen SC450 Center", "Chorus Clean - Jensen SM57 Edge",
+            "Rock - Celestion C414 Center", "Metal - ENGL V30 SM57 Center"
     };
     private static final String[] GUITAR_CAB_ASSETS = {
             "guitar_rig/metal_mesa_4x12.wav", "guitar_rig/fuzz_lead_800.wav",
@@ -241,7 +245,13 @@ public final class MainActivity extends Activity {
             "guitar_rig/cabinets/greenback_bright.wav",
             "guitar_rig/cabinets/greenback_cream.wav",
             "guitar_rig/cabinets/greenback_body.wav",
-            "guitar_rig/cabinets/greenback_cut.wav"
+            "guitar_rig/cabinets/greenback_cut.wav",
+            "guitar_rig/cabinets/open/jensen_sm57_clean.wav",
+            "guitar_rig/cabinets/open/jensen_e606_warm.wav",
+            "guitar_rig/cabinets/open/jensen_sc450_jazz.wav",
+            "guitar_rig/cabinets/open/jensen_sm57_edge_chorus.wav",
+            "guitar_rig/cabinets/open/celestion_c414_rock.wav",
+            "guitar_rig/cabinets/open/engl_v30_sm57_metal.wav"
     };
     private float metalBoostDrive = 0.34f;
     private float metalBoostTone = 0.52f;
@@ -749,13 +759,15 @@ public final class MainActivity extends Activity {
         // falls back to the legacy pedal amp path between launches.
         guitarNamTestOn = true;
         prefs.edit().putBoolean("guitar_nam_test_on", true).apply();
-        metalRigStyle = Math.max(0, Math.min(1, prefs.getInt("metal_rig_style", 0)));
+        metalRigStyle = Math.max(-1, Math.min(1, prefs.getInt("metal_rig_style", 0)));
         guitarNamIndex = Math.max(0, Math.min(GUITAR_NAM_NAMES.length - 1,
                 prefs.getInt("guitar_nam_index", metalRigStyle == 0 ? 0 : 1)));
         guitarCabIrIndex = Math.max(0, Math.min(GUITAR_CAB_NAMES.length - 1,
                 prefs.getInt("guitar_cab_ir_index", metalRigStyle == 0 ? 0 : 1)));
         cabinetIrLevel = Math.max(0f, Math.min(1.5f,
                 prefs.getFloat("cabinet_ir_level", 1.0f)));
+        virtualGuitarOutputLevel = Math.max(0f, Math.min(1.5f,
+                prefs.getFloat("virtual_guitar_output_level", 1.0f)));
         metalBoostDrive = prefs.getFloat("metal_boost_drive", 0.34f);
         metalBoostTone = prefs.getFloat("metal_boost_tone", 0.52f);
         metalBoostLevel = prefs.getFloat("metal_boost_level", 0.72f);
@@ -6633,14 +6645,17 @@ public final class MainActivity extends Activity {
                 && guitarNamTestOn && guitarNamTestReady;
         // Cabinet convolution and the output safety curve consume a little
         // headroom. Apply fixed makeup gain here; this is not auto-leveling.
-        float inputGain = 0.30f + guitarInputLevel * 1.70f;
+        // DI chords carry substantially more energy than single picked notes.
+        // Keep fixed headroom before NAM so power chords do not turn into
+        // broadband intermodulation; model/output gain restores stage level.
+        float inputGain = 0.15f + guitarInputLevel * 0.85f;
         engine.setNam(enabled, 1.0f, inputGain, 1.60f);
         engine.setNamIr(enabled && engine.namIrReady());
         engine.setNamIrLevel(cabinetIrLevel);
     }
 
     private void pushBuiltInMetalRigFx() {
-        engine.setBuiltInMetalRigFx(metalRigStyle,
+        engine.setBuiltInMetalRigFx(guitarNamIndex < 2 ? metalRigStyle : -1,
                 metalBoostDrive, metalBoostTone, metalBoostLevel,
                 metalDelayTime, metalDelayFeedback, metalDelayMix);
     }
@@ -7133,7 +7148,9 @@ public final class MainActivity extends Activity {
         content.addView(title, matchWrap());
         EditText search = new EditText(this);
         searchIme(search);
-        search.setHint(cabinets ? "Search 23 cabinets" : "Search NAM amps");
+        search.setHint(cabinets
+                ? "Search " + GUITAR_CAB_NAMES.length + " cabinets"
+                : "Search NAM pedals");
         search.setTextColor(COLOR_TEXT);
         search.setHintTextColor(COLOR_DIM);
         search.setSingleLine(true);
@@ -7172,6 +7189,10 @@ public final class MainActivity extends Activity {
                         } else if (index == 1) {
                             metalRigStyle = 1;
                             guitarCabIrIndex = 1;
+                        } else {
+                            metalRigStyle = -1;
+                            if (index == 4) guitarCabIrIndex = 23;
+                            else if (index == 5) guitarCabIrIndex = 25;
                         }
                     }
                     guitarNamTestOn = true;
@@ -7185,6 +7206,7 @@ public final class MainActivity extends Activity {
                     if (soundBarText != null) {
                         soundBarText.setText(GUITAR_NAM_NAMES[guitarNamIndex]);
                     }
+                    pushBuiltInMetalRigFx();
                     dialog.dismiss();
                     loadBuiltInMetalRig();
                 });
@@ -10358,11 +10380,14 @@ public final class MainActivity extends Activity {
 
     private void openInstrument(InstrumentMode mode) {
         virtualGuitarMidiMode = false;
+        engine.setVirtualGuitarMode(false);
         openInstrumentWorkspace(mode);
     }
 
     private void openVirtualGuitarMidi() {
         virtualGuitarMidiMode = true;
+        engine.setVirtualGuitarMode(true);
+        engine.setVirtualGuitarOutput(virtualGuitarOutputLevel);
         // Virtual Guitar is a single-instrument performance path. Keep the
         // user's saved Piano dual/layer setup intact, but never route it here.
         dualOn = false;
@@ -14948,6 +14973,7 @@ public final class MainActivity extends Activity {
             String filter = search.getText().toString().trim().toLowerCase(Locale.US);
             int shown = 0;
             for (int i = 0; i < GUITAR_NAM_NAMES.length; i++) {
+                final int builtInIndex = i;
                 String name = GUITAR_NAM_NAMES[i];
                 if (!filter.isEmpty() && !name.toLowerCase(Locale.US).contains(filter)) continue;
                 ExternalNamFile builtIn = new ExternalNamFile(
@@ -14957,6 +14983,14 @@ public final class MainActivity extends Activity {
                 styleChipButton(row, builtIn.uri.equals(activeNamUri));
                 row.setOnClickListener(v -> {
                     dialog.dismiss();
+                    if (builtInIndex == 4 || builtInIndex == 5) {
+                        pianoGuitarNamInputDb = -6f;
+                        int cabIndex = builtInIndex == 4 ? 23 : 25;
+                        ExternalIrFile cleanCab = new ExternalIrFile(
+                                Uri.parse("asset://" + GUITAR_CAB_ASSETS[cabIndex]),
+                                GUITAR_CAB_NAMES[cabIndex], "Built-in", -1L);
+                        loadNamIr(cleanCab, true);
+                    }
                     loadNamModel(builtIn, true);
                 });
                 list.addView(row, topMargin(matchWrap(), shown++ == 0 ? 0 : 6));
@@ -15370,9 +15404,11 @@ public final class MainActivity extends Activity {
                 }));
         Button outputButton = chipButton("Output");
         outputButton.setOnClickListener(v -> levelDialog(
-                "Virtual Guitar output", 100, Math.round(liveControlValues[5] * 100), p -> {
-                    liveControlValues[5] = p / 100f;
-                    applyLiveControls(liveControlValues);
+                "Virtual Guitar output", 150, Math.round(virtualGuitarOutputLevel * 100), p -> {
+                    virtualGuitarOutputLevel = p / 100f;
+                    prefs.edit().putFloat(
+                            "virtual_guitar_output_level", virtualGuitarOutputLevel).apply();
+                    engine.setVirtualGuitarOutput(virtualGuitarOutputLevel);
                     return p + "%";
                 }));
         Button cabinetLevelButton = chipButton("Cab level");

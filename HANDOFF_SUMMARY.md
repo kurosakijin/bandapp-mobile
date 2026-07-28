@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.91` / version code `362`
+- Current version: `1.1.92` / version code `363`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,19 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.92 - Clean Cabinets, Chord Headroom, and Final Output
+
+- Added six new 48 kHz mono cabinet responses derived from CC BY 4.0 Freesound
+  captures by jesterdyne: four Jensen positions, Celestion C414, and ENGL V30.
+- Non-metal NAM selections now bypass the metal pre-boost and delay. American
+  Deluxe and JC Clean automatically use Jensen clean/jazz cabinets.
+- Virtual Guitar applies smoothed active-note headroom before NAM so power
+  chords stay defined instead of creating glass-like intermodulation.
+- Microphone Guitar uses a lower fixed NAM input calibration for multi-string
+  power-chord headroom.
+- Both guitar modes now expose true final output gain after NAM and cabinet
+  processing, including actual mute at 0% and makeup up to 150%.
 
 ## Release 1.1.91 - Virtual Guitar Signal Chain and Shared NAM/IR Library
 

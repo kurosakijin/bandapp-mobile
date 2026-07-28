@@ -34,6 +34,20 @@ The Brutal pack is released as CC0/public domain. Both packs are explicitly
 free for commercial use and redistribution. Asset filenames were normalized
 for the Android package; the audio data is otherwise unchanged.
 
+Open cabinet additions (CC BY 4.0), captured by Freesound user jesterdyne:
+https://freesound.org/s/116743/ - Jensen SM57 center
+https://freesound.org/s/116746/ - Jensen e606 center
+https://freesound.org/s/116740/ - Jensen SC450 center
+https://freesound.org/s/116744/ - Jensen SM57 edge
+https://freesound.org/s/99941/  - Celestion C414 center
+https://freesound.org/s/116735/ - ENGL V30 SM57 center
+
+These six files are 48 kHz mono PCM derivatives of the sources' public
+high-quality Freesound previews because original-download access requires a
+Freesound account. They are redistributed under the source CC BY 4.0 license
+with attribution to jesterdyne. They are not represented as lossless copies of
+the original WAV downloads.
+
 The source repository is distributed under the MIT License. The complete
 license text is included beside this notice as LICENSE.txt.
 

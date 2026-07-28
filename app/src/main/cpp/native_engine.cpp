@@ -1019,7 +1019,7 @@ public:
 
     void setBuiltInMetalRigFx(int style, float drive, float tone, float level,
                               float delayTime, float delayFeedback, float delayMix) {
-        metalRigStyle_.store(style == 1 ? 1 : 0);
+        metalRigStyle_.store(style < 0 ? -1 : (style == 1 ? 1 : 0));
         metalBoostDrive_.store(clampFloat(drive, 0.0f, 1.0f));
         metalBoostTone_.store(clampFloat(tone, 0.0f, 1.0f));
         metalBoostLevel_.store(clampFloat(level, 0.0f, 1.0f));
@@ -1570,6 +1570,15 @@ public:
 
     void setNamIrLevel(float level) {
         namIrLevel_.store(std::max(0.0f, std::min(1.5f, level)));
+    }
+
+    void setVirtualGuitarMode(bool enabled) {
+        virtualGuitarMode_.store(enabled);
+        virtualGuitarPolyGain_ = 1.0f;
+    }
+
+    void setVirtualGuitarOutput(float level) {
+        virtualGuitarOutput_.store(clampFloat(level, 0.0f, 1.5f));
     }
 
     bool namIrReady() const {
@@ -2590,8 +2599,10 @@ public:
                         ? softClip(dryL + processReverb(0, dryL) * revSend) : dryL;
                 float sr = reverb
                         ? softClip(dryR + processReverb(1, dryR) * revSend) : dryR;
-                output[frame * 2] = sl;
-                output[frame * 2 + 1] = sr;
+                float finalLevel = virtualGuitarMode_.load(std::memory_order_relaxed)
+                        ? virtualGuitarOutput_.load(std::memory_order_relaxed) : 1.0f;
+                output[frame * 2] = softKneeLimit(sl * finalLevel, 0.88f, 1.12f);
+                output[frame * 2 + 1] = softKneeLimit(sr * finalLevel, 0.88f, 1.12f);
                 sumSquares += sl * sl + sr * sr;
             }
             mixMetronome(output, numFrames);
@@ -2654,13 +2665,15 @@ public:
                 float namSignal = (output[frame * 2] + output[frame * 2 + 1]) * 0.5f;
                 // Match perceived loudness per rig after NAM + cabinet. The
                 // tight 5153 capture has much lower RMS than the British model.
-                namSignal *= metalRigStyle_.load(std::memory_order_relaxed) == 0
-                        ? 1.70f : 0.92f;
+                int rigStyle = metalRigStyle_.load(std::memory_order_relaxed);
+                namSignal *= rigStyle == 0 ? 1.70f : rigStyle == 1 ? 0.92f : 1.0f;
                 float delayed = processMetalDelay(namSignal);
                 delayed = processNamPostFx(delayed);
                 // The normal amp path applies control 6 internally; NAM bypasses
                 // that amp, so reconnect the visible rack Volume here.
-                float namLevel = 0.55f + c6_ * 0.75f;
+                // This is the final app output, not another preamp drive.
+                // Zero must mute; the upper half provides stage makeup.
+                float namLevel = c6_ * 1.50f;
                 delayed = softKneeLimit(delayed * namLevel, 0.78f, 1.04f);
                 output[frame * 2] = delayed;
                 output[frame * 2 + 1] = delayed;
@@ -3169,8 +3182,18 @@ private:
             int32_t count = std::min<int32_t>(kNamBlockFrames, numFrames - offset);
             for (int32_t i = 0; i < count; ++i) {
                 int32_t frame = offset + i;
+                float polyGain = 1.0f;
+                if (virtualGuitarMode_.load(std::memory_order_relaxed)) {
+                    int notes = std::max(1, chanActive_[0]);
+                    float target = 1.0f / std::sqrt(static_cast<float>(notes));
+                    // Smooth note-count changes so releasing one note cannot
+                    // click or abruptly jump the NAM input level.
+                    virtualGuitarPolyGain_ += 0.012f
+                            * (target - virtualGuitarPolyGain_);
+                    polyGain = virtualGuitarPolyGain_;
+                }
                 namInput_[i] = (stereo[frame * 2] + stereo[frame * 2 + 1])
-                        * 0.5f * inputGain;
+                        * 0.5f * inputGain * polyGain;
             }
             NAM_SAMPLE *inputs[] = {namInput_.data()};
             NAM_SAMPLE *outputs[] = {namOutput_.data()};
@@ -3475,6 +3498,7 @@ private:
     }
 
     float processMetalBoost(float input) {
+        if (metalRigStyle_.load(std::memory_order_relaxed) < 0) return input;
         if (metalRigStyle_.load(std::memory_order_relaxed) == 1) {
             // Tight high-gain overdrive, not fuzz: trim flubby lows, add
             // controlled mid-focused drive, and preserve the pick transient.
@@ -3506,6 +3530,7 @@ private:
     }
 
     float processMetalDelay(float input) {
+        if (metalRigStyle_.load(std::memory_order_relaxed) < 0) return input;
         if (metalRigStyle_.load(std::memory_order_relaxed) == 1) return input;
         int size = static_cast<int>(metalDelay_.size());
         int delaySamples = static_cast<int>((0.10f
@@ -6513,6 +6538,9 @@ private:
     std::atomic<int> namIrActive_{0};
     std::atomic<bool> namIrEnabled_{false};
     std::atomic<float> namIrLevel_{1.0f};
+    std::atomic<bool> virtualGuitarMode_{false};
+    std::atomic<float> virtualGuitarOutput_{1.0f};
+    float virtualGuitarPolyGain_ = 1.0f;
     std::atomic<bool> namIrReset_{false};
     std::array<float, kNamIrTaps> namIrHistory_{};
     int namIrWrite_ = 0;
@@ -8016,6 +8044,18 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_instrumental_attachment_NativeAudioEngine_nativeSetNamIrLevel(
         JNIEnv *, jobject, jfloat level) {
     engine().setNamIrLevel(level);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_instrumental_attachment_NativeAudioEngine_nativeSetVirtualGuitarMode(
+        JNIEnv *, jobject, jboolean on) {
+    engine().setVirtualGuitarMode(on == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_instrumental_attachment_NativeAudioEngine_nativeSetVirtualGuitarOutput(
+        JNIEnv *, jobject, jfloat level) {
+    engine().setVirtualGuitarOutput(level);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

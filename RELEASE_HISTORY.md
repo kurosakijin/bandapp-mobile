@@ -1,5 +1,19 @@
 # Release History
 
+## 1.1.92 (version code 363) - 2026-07-29
+
+- Added six genuinely distinct Jensen, Celestion, and ENGL cabinet responses
+  for clean, warm clean, jazz, chorus, rock, and metal use, with CC BY 4.0
+  attribution and license files.
+- Fixed clean and jazz NAM models inheriting the metal boost and delay, and
+  paired American Deluxe and JC Clean with appropriate Jensen cabinets.
+- Added smoothed MIDI note-count headroom before Virtual Guitar NAM to prevent
+  multi-note power chords from collapsing into glass-like intermodulation.
+- Recalibrated microphone Guitar NAM input for multi-string chord headroom.
+- Replaced ineffective pre-NAM Output behavior with true post-NAM controls:
+  Virtual Guitar and microphone Guitar can now reach actual mute and scale to
+  150% without changing preamp drive.
+
 ## 1.1.91 (version code 362) - 2026-07-28
 
 - Rebuilt Virtual Guitar MIDI as a single-voice Keyboard A instrument with no
