@@ -1,5 +1,19 @@
 # Release History
 
+## 1.1.91 (version code 362) - 2026-07-28
+
+- Rebuilt Virtual Guitar MIDI as a single-voice Keyboard A instrument with no
+  Sound 2, Dual, Layers, Sustain, or Slide controls.
+- Added a clickable Virtual Guitar signal chain for MIDI, Player, Drive, NAM
+  Pedal, Cabinet, Modulation, Room, and Output.
+- Fixed Virtual Guitar notes sustaining after key release by applying fast,
+  per-note release to the main and articulation SoundFonts.
+- Shared the seven bundled NAM models and 23 cabinet IRs between Virtual Guitar
+  and microphone Guitar, with searchable Metal, Rock, Clean, Jazz, Chorus,
+  Rhodes, and Bass-oriented labels.
+- Renamed the NAM stage to Pedal in both guitar modes and added a persisted,
+  native post-convolution cabinet level control from 0% to 150%.
+
 ## 1.1.90 (version code 361) - 2026-07-28
 
 - Made NAM and cabinet processing permanent in regular Guitar mode and moved

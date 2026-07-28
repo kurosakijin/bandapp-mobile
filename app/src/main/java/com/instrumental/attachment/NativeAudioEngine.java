@@ -594,6 +594,7 @@ final class NativeAudioEngine {
         return nativeLoadNamIr(data, frames, channels, rate);
     }
     void setNamIr(boolean on) { nativeSetNamIr(on); }
+    void setNamIrLevel(float level) { nativeSetNamIrLevel(level); }
     boolean namIrReady() { return nativeNamIrReady(); }
     void setPianoSoftB(float soft) { nativeSetPianoSoftB(soft); }
     void setLevelB(float lvl) { nativeSetLevelB(lvl); }
@@ -857,6 +858,7 @@ final class NativeAudioEngine {
     private native float nativeNamExpectedRate();
     private native boolean nativeLoadNamIr(float[] data, int frames, int channels, int rate);
     private native void nativeSetNamIr(boolean on);
+    private native void nativeSetNamIrLevel(float level);
     private native boolean nativeNamIrReady();
     private native void nativeSetPianoSoftB(float soft);
     private native void nativeSetLevelB(float lvl);

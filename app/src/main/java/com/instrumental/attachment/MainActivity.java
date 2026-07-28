@@ -63,6 +63,7 @@ import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -201,9 +202,11 @@ public final class MainActivity extends Activity {
     private final Button[] metalRigStyleButtons = new Button[2];
     private int guitarNamIndex;
     private int guitarCabIrIndex;
+    private float cabinetIrLevel = 1.0f;
     private static final String[] GUITAR_NAM_NAMES = {
-            "Tight Delay", "High Gain Metal", "Boutique Lead", "AC Chime",
-            "American Deluxe", "Jazz Clean", "Ampeg Grind"
+            "Metal · Tight 5153", "Metal · High Gain JCM", "Rock · Boutique Lead",
+            "Rock · AC Chime", "Clean · American Deluxe",
+            "Jazz / Chorus / Rhodes · JC Clean", "Bass · Ampeg Warm"
     };
     private static final String[] GUITAR_NAM_ASSETS = {
             "guitar_rig/metal_5153.nam", "guitar_rig/fuzz_jcm.nam",
@@ -212,14 +215,16 @@ public final class MainActivity extends Activity {
             "guitar_rig/amp_ampeg.nam"
     };
     private static final String[] GUITAR_CAB_NAMES = {
-            "Mesa Modern 4x12", "Lead 800 Celestion",
-            "Brutal Tight", "Brutal Edge", "Brutal Cut",
-            "Brutal Body", "Brutal Dense", "Brutal Dry",
-            "Brutal Blend", "Brutal Rock", "Brutal Focus",
-            "Brutal Modern", "Brutal Dark", "Brutal Mid Focus",
-            "Brutal Bright", "Brutal Wide", "Brutal Aggressive",
-            "Greenback Warm", "Greenback Edge", "Greenback Bright",
-            "Greenback Cream", "Greenback Body", "Greenback Cut"
+            "Metal · Mesa Modern 4x12", "Rock · Lead 800 Celestion",
+            "Metal · Brutal Tight", "Metal · Brutal Edge", "Metal · Brutal Cut",
+            "Metal · Brutal Body", "Metal · Brutal Dense", "Metal · Brutal Dry",
+            "Metal · Brutal Blend", "Rock · Brutal Rock", "Metal · Brutal Focus",
+            "Metal · Brutal Modern", "Jazz · Brutal Dark", "Rock · Brutal Mid Focus",
+            "Clean · Brutal Bright", "Chorus-ready · Brutal Wide",
+            "Metal · Brutal Aggressive", "Jazz · Greenback Warm",
+            "Rock · Greenback Edge", "Clean · Greenback Bright",
+            "Rhodes · Greenback Cream", "Clean · Greenback Body",
+            "Chorus-ready · Greenback Cut"
     };
     private static final String[] GUITAR_CAB_ASSETS = {
             "guitar_rig/metal_mesa_4x12.wav", "guitar_rig/fuzz_lead_800.wav",
@@ -749,6 +754,8 @@ public final class MainActivity extends Activity {
                 prefs.getInt("guitar_nam_index", metalRigStyle == 0 ? 0 : 1)));
         guitarCabIrIndex = Math.max(0, Math.min(GUITAR_CAB_NAMES.length - 1,
                 prefs.getInt("guitar_cab_ir_index", metalRigStyle == 0 ? 0 : 1)));
+        cabinetIrLevel = Math.max(0f, Math.min(1.5f,
+                prefs.getFloat("cabinet_ir_level", 1.0f)));
         metalBoostDrive = prefs.getFloat("metal_boost_drive", 0.34f);
         metalBoostTone = prefs.getFloat("metal_boost_tone", 0.52f);
         metalBoostLevel = prefs.getFloat("metal_boost_level", 0.72f);
@@ -1525,7 +1532,7 @@ public final class MainActivity extends Activity {
                     LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), 10));
         } else {
             String barLabel = currentMode == InstrumentMode.DRUMS ? "KIT"
-                    : (currentMode == InstrumentMode.ELECTRIC_GUITAR ? "NAM AMP" : "PEDAL");
+                    : (currentMode == InstrumentMode.ELECTRIC_GUITAR ? "NAM PEDAL" : "PEDAL");
             rail.addView(buildSoundBar(barLabel), topMargin(matchWrap(), 10));
             if (currentMode != InstrumentMode.DRUMS) {
                 rail.addView(buildMeterBar(), topMargin(matchWrap(), 10));
@@ -6390,8 +6397,18 @@ public final class MainActivity extends Activity {
         final Button midiButton = chipButton("MIDI ⇄");
         midiButton.setOnClickListener(v -> midiKeyboardsDialog());
 
-        col.addView(pillGrid(5, sustainButton, reverbButton, dualButton, glideButton, midiButton),
-                matchWrap());
+        if (virtualGuitarMidiMode) {
+            // A MIDI guitar note follows key-down/key-up directly. Sustain,
+            // glide, Dual and Layers belong to Piano and must not leak here.
+            engine.setSustain(false);
+            engine.setSustainPedal(false);
+            engine.setPianoGlide(false);
+            midiPedalDown = false;
+            col.addView(pillGrid(2, reverbButton, midiButton), matchWrap());
+        } else {
+            col.addView(pillGrid(5, sustainButton, reverbButton, dualButton, glideButton, midiButton),
+                    matchWrap());
+        }
         TextView holdHint = new TextView(this);
         holdHint.setText("Hold a button to set its amount");
         holdHint.setTextColor(COLOR_DIM);
@@ -6402,11 +6419,11 @@ public final class MainActivity extends Activity {
         styleChipButton(reverbButton, reverbOn);
         styleChipButton(dualButton, dualOn);
         styleChipButton(glideButton, pianoGlideOn);
-        engine.setSustain(sustainOn);
+        engine.setSustain(virtualGuitarMidiMode ? false : sustainOn);
         engine.setReverb(reverbOn);
         engine.setSustainTime(sustainTime);
         engine.setReverbLevel(reverbLevel);
-        pushPianoGlide();
+        if (!virtualGuitarMidiMode) pushPianoGlide();
         engine.setPianoGlideRate(pianoGlideRate);
         return col;
     }
@@ -6467,7 +6484,7 @@ public final class MainActivity extends Activity {
         rack.setOrientation(LinearLayout.VERTICAL);
         signalChainView = new SignalChainView(this);
         signalChainView.setChain(new String[] {
-                "IN", "GATE", "COMP", "WAH", "AMP", "CAB", "MOD", "DELAY", "ROOM", "OUT"
+                "IN", "GATE", "COMP", "WAH", "PEDAL", "CAB", "MOD", "DELAY", "ROOM", "OUT"
         }, toneAccentStatic(currentPreset), 4);
         shell.addView(signalChainView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(82)));
@@ -6507,7 +6524,7 @@ public final class MainActivity extends Activity {
         wah.addView(buildWahRow(), matchWrap());
         rack.addView(wah, topMargin(matchWrap(), 8));
 
-        LinearLayout amp = stagePanel("05  NAM AMP · EQ", toneAccentStatic(currentPreset));
+        LinearLayout amp = stagePanel("05  NAM PEDAL · EQ", toneAccentStatic(currentPreset));
         TextView ampName = labelText(GUITAR_NAM_NAMES[guitarNamIndex].toUpperCase(Locale.ROOT));
         ampName.setTextColor(COLOR_TEXT);
         amp.addView(ampName, matchWrap());
@@ -6523,6 +6540,11 @@ public final class MainActivity extends Activity {
                 "Cabinet IR · " + GUITAR_CAB_NAMES[guitarCabIrIndex]);
         cabinetPicker.setOnClickListener(v -> showGuitarCabinetPicker());
         cab.addView(cabinetPicker, matchWrap());
+        cab.addView(buildRackSlider("Cab level", cabinetIrLevel / 1.5f, value -> {
+            cabinetIrLevel = value * 1.5f;
+            prefs.edit().putFloat("cabinet_ir_level", cabinetIrLevel).apply();
+            engine.setNamIrLevel(cabinetIrLevel);
+        }), topMargin(matchWrap(), 8));
         rack.addView(cab, topMargin(matchWrap(), 8));
 
         LinearLayout mod = stagePanel("07  MODULATION · CHORUS", 0xff7a62df);
@@ -6614,6 +6636,7 @@ public final class MainActivity extends Activity {
         float inputGain = 0.30f + guitarInputLevel * 1.70f;
         engine.setNam(enabled, 1.0f, inputGain, 1.60f);
         engine.setNamIr(enabled && engine.namIrReady());
+        engine.setNamIrLevel(cabinetIrLevel);
     }
 
     private void pushBuiltInMetalRigFx() {
@@ -7103,7 +7126,7 @@ public final class MainActivity extends Activity {
         content.setOrientation(LinearLayout.VERTICAL);
         content.setPadding(dp(16), dp(16), dp(16), dp(14));
         TextView title = new TextView(this);
-        title.setText(cabinets ? "Choose Cabinet IR" : "Choose NAM Amp");
+        title.setText(cabinets ? "Choose Cabinet IR" : "Choose NAM Pedal");
         title.setTextColor(COLOR_TEXT);
         title.setTextSize(19);
         title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
@@ -10340,6 +10363,15 @@ public final class MainActivity extends Activity {
 
     private void openVirtualGuitarMidi() {
         virtualGuitarMidiMode = true;
+        // Virtual Guitar is a single-instrument performance path. Keep the
+        // user's saved Piano dual/layer setup intact, but never route it here.
+        dualOn = false;
+        dualSeparate = false;
+        layerMode = false;
+        liveTab = 0;
+        engine.setKeySplitConfig(-1, -1);
+        engine.setMidiLayer(-1);
+        engine.setLayerBlend(0, -1);
         if (!prefs.getBoolean("virtual_guitar_initialized", false)) {
             pianoGuitarRigOn = true;
             prefs.edit()
@@ -10357,6 +10389,18 @@ public final class MainActivity extends Activity {
         engine.allNotesOff();
         currentMode = mode;
         loadAudioPrefs();   // each instrument keeps its own input/output choice
+        if (virtualGuitarMidiMode) {
+            // Piano preferences may restore Dual/Layers. Virtual Guitar always
+            // owns one MIDI keyboard and one voice, without changing those
+            // saved Piano preferences.
+            dualOn = false;
+            dualSeparate = false;
+            layerMode = false;
+            liveTab = 0;
+            engine.setKeySplitConfig(-1, -1);
+            engine.setMidiLayer(-1);
+            engine.setLayerBlend(0, -1);
+        }
         currentPreset = lastPreset(mode);   // restore the last sound picked here
         if (virtualGuitarMidiMode && !isGuitarPreset(currentPreset)) {
             currentPreset = TonePreset.VIRTUAL_GUITAR_STARTER;
@@ -14750,7 +14794,9 @@ public final class MainActivity extends Activity {
     }
 
     private String selectedExternalGuitarUri() {
-        return dualOn && liveTab == 1 ? activeExternalDualUri : activeExternalMainUri;
+        return virtualGuitarMidiMode
+                ? activeExternalMainUri
+                : dualOn && liveTab == 1 ? activeExternalDualUri : activeExternalMainUri;
     }
 
     private void savePianoGuitarRig() {
@@ -14774,8 +14820,7 @@ public final class MainActivity extends Activity {
 
     private void pushPianoGuitarRig() {
         boolean onA = virtualGuitarMidiMode && pianoGuitarRigOn && pianoGuitarVoice(false);
-        boolean onB = virtualGuitarMidiMode && pianoGuitarRigOn
-                && dualOn && pianoGuitarVoice(true);
+        boolean onB = false;
         engine.setPianoGuitarRig(onA, onB, pianoGuitarAmp, pianoGuitarCab,
                 pianoGuitarDrive, pianoGuitarTone, pianoGuitarHarmonics);
         engine.setVirtualGuitarPlayer(virtualGuitarMidiMode && virtualGuitarPlayerOn);
@@ -14784,6 +14829,7 @@ public final class MainActivity extends Activity {
                 dbToLinear(pianoGuitarNamOutputDb));
         engine.setNamIr(virtualGuitarMidiMode && pianoGuitarNamIrOn
                 && engine.namIrReady());
+        engine.setNamIrLevel(cabinetIrLevel);
         if (virtualGuitarMidiMode && activeNamUri != null
                 && !activeNamUri.equals(loadedNamUri) && !namLoading) {
             loadNamModel(findExternalNam(activeNamUri), false);
@@ -14814,6 +14860,11 @@ public final class MainActivity extends Activity {
     }
 
     private String activeNamName() {
+        for (int i = 0; i < GUITAR_NAM_ASSETS.length; i++) {
+            if (("asset://" + GUITAR_NAM_ASSETS[i]).equals(activeNamUri)) {
+                return GUITAR_NAM_NAMES[i];
+            }
+        }
         ExternalNamFile file = findExternalNam(activeNamUri);
         if (file == null) return "Choose model";
         String name = file.name;
@@ -14827,7 +14878,9 @@ public final class MainActivity extends Activity {
         refreshPianoGuitarRig();
         beginSoundLoad("Loading NAM model...");
         namLoader.execute(() -> {
-            byte[] bytes = readExternalNam(Uri.parse(file.uri), file.size);
+            byte[] bytes = file.uri.startsWith("asset://")
+                    ? readAsset(file.uri.substring(8))
+                    : readExternalNam(Uri.parse(file.uri), file.size);
             boolean ok = bytes != null && engine.loadNamModel(bytes);
             handler.post(() -> {
                 namLoading = false;
@@ -14866,7 +14919,7 @@ public final class MainActivity extends Activity {
         content.setPadding(dp(16), dp(16), dp(16), dp(14));
 
         TextView title = new TextView(this);
-        title.setText("NAM Amp Model");
+        title.setText("NAM Pedal");
         title.setTextColor(COLOR_TEXT);
         title.setTextSize(19);
         title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
@@ -14894,6 +14947,20 @@ public final class MainActivity extends Activity {
             list.removeAllViews();
             String filter = search.getText().toString().trim().toLowerCase(Locale.US);
             int shown = 0;
+            for (int i = 0; i < GUITAR_NAM_NAMES.length; i++) {
+                String name = GUITAR_NAM_NAMES[i];
+                if (!filter.isEmpty() && !name.toLowerCase(Locale.US).contains(filter)) continue;
+                ExternalNamFile builtIn = new ExternalNamFile(
+                        Uri.parse("asset://" + GUITAR_NAM_ASSETS[i]), name, "Built-in", -1L);
+                Button row = chipButton("Built-in · " + name);
+                row.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+                styleChipButton(row, builtIn.uri.equals(activeNamUri));
+                row.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    loadNamModel(builtIn, true);
+                });
+                list.addView(row, topMargin(matchWrap(), shown++ == 0 ? 0 : 6));
+            }
             for (ExternalNamFile file : externalNamFiles) {
                 String searchable = (file.name + " " + file.relativePath)
                         .toLowerCase(Locale.US);
@@ -14951,6 +15018,11 @@ public final class MainActivity extends Activity {
     }
 
     private String activeNamIrName() {
+        for (int i = 0; i < GUITAR_CAB_ASSETS.length; i++) {
+            if (("asset://" + GUITAR_CAB_ASSETS[i]).equals(activeNamIrUri)) {
+                return GUITAR_CAB_NAMES[i];
+            }
+        }
         ExternalIrFile file = findExternalIr(activeNamIrUri);
         if (file == null) return "Choose IR";
         String name = file.name;
@@ -14963,7 +15035,9 @@ public final class MainActivity extends Activity {
         namIrLoading = true;
         refreshPianoGuitarRig();
         namLoader.execute(() -> {
-            byte[] bytes = readExternalNam(Uri.parse(file.uri), file.size);
+            byte[] bytes = file.uri.startsWith("asset://")
+                    ? readAsset(file.uri.substring(8))
+                    : readExternalNam(Uri.parse(file.uri), file.size);
             WavPcm wav = decodeIrWav(bytes);
             boolean ok = wav != null && engine.loadNamIr(
                     wav.samples, wav.frames, wav.channels, wav.rate);
@@ -15021,6 +15095,20 @@ public final class MainActivity extends Activity {
             list.removeAllViews();
             String filter = search.getText().toString().trim().toLowerCase(Locale.US);
             int shown = 0;
+            for (int i = 0; i < GUITAR_CAB_NAMES.length; i++) {
+                String name = GUITAR_CAB_NAMES[i];
+                if (!filter.isEmpty() && !name.toLowerCase(Locale.US).contains(filter)) continue;
+                ExternalIrFile builtIn = new ExternalIrFile(
+                        Uri.parse("asset://" + GUITAR_CAB_ASSETS[i]), name, "Built-in", -1L);
+                Button row = chipButton("Built-in · " + name);
+                row.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+                styleChipButton(row, builtIn.uri.equals(activeNamIrUri));
+                row.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    loadNamIr(builtIn, true);
+                });
+                list.addView(row, topMargin(matchWrap(), shown++ == 0 ? 0 : 6));
+            }
             for (ExternalIrFile file : externalIrFiles) {
                 String searchable = (file.name + " " + file.relativePath)
                         .toLowerCase(Locale.US);
@@ -15202,10 +15290,6 @@ public final class MainActivity extends Activity {
             refreshPianoGuitarRig();
         });
 
-        panel.addView(pillGrid(4, pianoGuitarRigButton,
-                pianoGuitarAmpButton, pianoGuitarCabButton, pianoGuitarNamButton),
-                topMargin(matchWrap(), 6));
-
         pianoGuitarMarkButton = chipButton("Guitar SF");
         pianoGuitarMarkButton.setOnClickListener(v -> {
             String uri = selectedExternalGuitarUri();
@@ -15224,10 +15308,6 @@ public final class MainActivity extends Activity {
             pushPianoGuitarRig();
             refreshPianoGuitarRig();
         });
-        panel.addView(pillGrid(5, pianoGuitarDriveButton, pianoGuitarToneButton,
-                pianoGuitarHarmButton, virtualGuitarPlayerButton,
-                pianoGuitarMarkButton), topMargin(matchWrap(), 6));
-
         pianoGuitarNamModelButton = chipButton("NAM Model");
         pianoGuitarNamModelButton.setSingleLine(true);
         pianoGuitarNamModelButton.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -15274,14 +15354,85 @@ public final class MainActivity extends Activity {
             pushPianoGuitarRig();
             refreshPianoGuitarRig();
         });
-        panel.addView(pillGrid(3, pianoGuitarNamModelButton, pianoGuitarNamMixButton,
-                pianoGuitarNamIrModelButton),
-                topMargin(matchWrap(), 6));
-        panel.addView(pillGrid(3, pianoGuitarNamInputButton,
-                pianoGuitarNamOutputButton, pianoGuitarNamIrButton),
-                topMargin(matchWrap(), 6));
+        Button modButton = chipButton("Chorus");
+        modButton.setOnClickListener(v -> levelDialog(
+                "Modulation", 100, Math.round(liveControlValues[2] * 100), p -> {
+                    liveControlValues[2] = p / 100f;
+                    applyLiveControls(liveControlValues);
+                    return p + "%";
+                }));
+        Button roomButton = chipButton("Room");
+        roomButton.setOnClickListener(v -> levelDialog(
+                "Room", 100, Math.round(liveControlValues[4] * 100), p -> {
+                    liveControlValues[4] = p / 100f;
+                    applyLiveControls(liveControlValues);
+                    return p + "%";
+                }));
+        Button outputButton = chipButton("Output");
+        outputButton.setOnClickListener(v -> levelDialog(
+                "Virtual Guitar output", 100, Math.round(liveControlValues[5] * 100), p -> {
+                    liveControlValues[5] = p / 100f;
+                    applyLiveControls(liveControlValues);
+                    return p + "%";
+                }));
+        Button cabinetLevelButton = chipButton("Cab level");
+        cabinetLevelButton.setOnClickListener(v -> levelDialog(
+                "Cabinet level", 150, Math.round(cabinetIrLevel * 100f), p -> {
+                    cabinetIrLevel = p / 100f;
+                    prefs.edit().putFloat("cabinet_ir_level", cabinetIrLevel).apply();
+                    engine.setNamIrLevel(cabinetIrLevel);
+                    return p + "%";
+                }));
+
+        String[] stages = {"MIDI", "PLAYER", "DRIVE", "PEDAL", "CAB", "MOD", "ROOM", "OUT"};
+        SignalChainView chain = new SignalChainView(this);
+        chain.setChain(stages, COLOR_AMBER, 0);
+        panel.addView(chain, topMargin(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(68)), 8));
+
+        LinearLayout stageHost = new LinearLayout(this);
+        stageHost.setOrientation(LinearLayout.VERTICAL);
+        ArrayList<View> stageViews = new ArrayList<>();
+        stageViews.add(virtualGuitarStage("MIDI INPUT",
+                pillGrid(1, pianoGuitarMarkButton)));
+        stageViews.add(virtualGuitarStage("PERFORMANCE PLAYER",
+                pillGrid(2, virtualGuitarPlayerButton, pianoGuitarHarmButton)));
+        stageViews.add(virtualGuitarStage("DRIVE",
+                pillGrid(3, pianoGuitarRigButton, pianoGuitarDriveButton, pianoGuitarToneButton)));
+        stageViews.add(virtualGuitarStage("NAM PEDAL",
+                pillGrid(3, pianoGuitarNamButton, pianoGuitarNamModelButton,
+                        pianoGuitarNamMixButton),
+                pillGrid(2, pianoGuitarNamInputButton, pianoGuitarNamOutputButton)));
+        stageViews.add(virtualGuitarStage("CABINET",
+                pillGrid(3, pianoGuitarCabButton, pianoGuitarNamIrModelButton,
+                        pianoGuitarNamIrButton),
+                pillGrid(1, cabinetLevelButton)));
+        stageViews.add(virtualGuitarStage("MODULATION", pillGrid(1, modButton)));
+        stageViews.add(virtualGuitarStage("ROOM", pillGrid(1, roomButton)));
+        stageViews.add(virtualGuitarStage("OUTPUT", pillGrid(1, outputButton)));
+        stageHost.addView(stageViews.get(0), matchWrap());
+        chain.setOnStageSelected(index -> {
+            if (index < 0 || index >= stageViews.size()) return;
+            TransitionManager.beginDelayedTransition(stageHost);
+            stageHost.removeAllViews();
+            stageHost.addView(stageViews.get(index), matchWrap());
+            chain.setHighlight(index);
+        });
+        panel.addView(stageHost, topMargin(matchWrap(), 8));
         refreshPianoGuitarRig();
         return panel;
+    }
+
+    private View virtualGuitarStage(String title, View... controls) {
+        LinearLayout stage = new LinearLayout(this);
+        stage.setOrientation(LinearLayout.VERTICAL);
+        TextView label = labelText(title);
+        label.setTextColor(COLOR_TEXT);
+        stage.addView(label, matchWrap());
+        for (View control : controls) {
+            stage.addView(control, topMargin(matchWrap(), 6));
+        }
+        return stage;
     }
 
     private void refreshPianoGuitarRig() {
@@ -15376,6 +15527,20 @@ public final class MainActivity extends Activity {
     private View buildLiveControlsSection(int accent) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
+
+        if (virtualGuitarMidiMode) {
+            liveTab = 0;
+            liveTabAButton = transportPill("KEYBOARD A");
+            styleTogglePill(liveTabAButton, true);
+            box.addView(liveTabAButton, matchWrap());
+            liveControlView = new LiveControlView(this);
+            liveControlView.setValues(liveControlValues);
+            liveControlView.setControlsChangedListener(this::applyLiveControls);
+            liveControlViewB = null;
+            box.addView(liveControlView, topMargin(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(150)), 10));
+            return box;
+        }
 
         if (!dualOn) liveTab = 0;
         LinearLayout tabs = new LinearLayout(this);

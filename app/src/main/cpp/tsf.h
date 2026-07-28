@@ -227,6 +227,7 @@ TSFDEF int tsf_channel_set_sustain(tsf* f, int channel, int flag_sustain);
 //   (tsf_channel_note_on returns 0 on allocation failure of new voice, otherwise 1)
 TSFDEF int tsf_channel_note_on(tsf* f, int channel, int key, float vel);
 TSFDEF void tsf_channel_note_off(tsf* f, int channel, int key);
+TSFDEF void tsf_channel_note_off_quick(tsf* f, int channel, int key);
 TSFDEF void tsf_channel_note_off_all(tsf* f, int channel); //end with sustain and release
 TSFDEF void tsf_channel_sounds_off_all(tsf* f, int channel); //end immediately
 
@@ -2009,6 +2010,16 @@ TSFDEF void tsf_channel_note_off(tsf* f, int channel, int key)
 		else
 			tsf_voice_end(f, v);
 	}
+}
+
+TSFDEF void tsf_channel_note_off_quick(tsf* f, int channel, int key)
+{
+	struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
+	for (; v != vEnd; v++)
+		if (v->playingPreset != -1 && v->playingChannel == channel &&
+			v->playingKey == key &&
+			(v->ampenv.segment < TSF_SEGMENT_RELEASE || v->ampenv.parameters.release))
+			tsf_voice_endquick(f, v);
 }
 
 TSFDEF void tsf_channel_note_off_all(tsf* f, int channel)

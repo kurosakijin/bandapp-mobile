@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.90` / version code `361`
+- Current version: `1.1.91` / version code `362`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,21 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.91 - Virtual Guitar Signal Chain and Shared NAM/IR Library
+
+- Virtual Guitar MIDI is now strictly one Keyboard A voice. Sound 2, Dual,
+  Layers, Sustain, and Slide are suppressed without overwriting the user's
+  saved normal Piano configuration.
+- Its controls are organized as clickable MIDI, Player, Drive, NAM Pedal,
+  Cabinet, Modulation, Room, and Output stages.
+- Note-off now fast-releases every active Virtual Guitar SoundFont voice,
+  including alternate, palm-muted, and harmonic articulation fonts.
+- Virtual Guitar and microphone Guitar expose the same seven built-in NAM
+  models and 23 cabinet IRs, categorized for Metal, Rock, Clean, Jazz, Chorus,
+  Rhodes, and Bass use while retaining external NAM/IR folder support.
+- Both guitar modes have a persisted 0-150% cabinet level control implemented
+  after native IR convolution.
 
 ## Pending Release - Permanent NAM Guitar and Stage Tabs
 

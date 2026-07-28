@@ -1568,6 +1568,10 @@ public:
         namIrEnabled_.store(enabled);
     }
 
+    void setNamIrLevel(float level) {
+        namIrLevel_.store(std::max(0.0f, std::min(1.5f, level)));
+    }
+
     bool namIrReady() const {
         int active = namIrActive_.load(std::memory_order_acquire);
         return namIrLength_[active].load(std::memory_order_acquire) > 0;
@@ -3212,7 +3216,7 @@ private:
             if (--read < 0) read = kNamIrTaps - 1;
         }
         if (++namIrWrite_ >= kNamIrTaps) namIrWrite_ = 0;
-        return output;
+        return output * namIrLevel_.load(std::memory_order_relaxed);
     }
 
     float processReverb(int ch, float in) {
@@ -4273,11 +4277,11 @@ private:
                     }
                 }
             } else if (e[0] == kEvNoteOff
-                    && virtualGuitarPlayer_.load(std::memory_order_relaxed)
-                    && virtualGuitarNoteSource_[note] > 0) {
+                    && virtualGuitarPlayer_.load(std::memory_order_relaxed)) {
                 stopVirtualGuitarNote(snd, alt, note);
                 pendingRelease_[note] = -1;
                 releaseVirtualGuitarString(note);
+                extraLayersOff(gm, note);
             } else if (e[0] == kEvAllOff) {
                 tsf_note_off_all(snd);
                 if (alt != nullptr && alt != snd) {
@@ -4563,12 +4567,12 @@ private:
     }
 
     void stopVirtualGuitarNote(tsf *snd, tsf *alt, int note) {
-        if (snd != nullptr) tsf_channel_note_off(snd, 0, note);
-        if (alt != nullptr) tsf_channel_note_off(alt, 1, note);
+        if (snd != nullptr) tsf_channel_note_off_quick(snd, 0, note);
+        if (alt != nullptr) tsf_channel_note_off_quick(alt, 1, note);
         tsf *palm = hqFonts_[kVirtualGuitarPalmSlot].load();
         tsf *harm = hqFonts_[kVirtualGuitarHarmSlot].load();
-        if (palm != nullptr) tsf_channel_note_off(palm, 0, note);
-        if (harm != nullptr) tsf_channel_note_off(harm, 0, note);
+        if (palm != nullptr) tsf_channel_note_off_quick(palm, 0, note);
+        if (harm != nullptr) tsf_channel_note_off_quick(harm, 0, note);
     }
 
     // Custom-kit source codes identify a font, not one of its presets. Most
@@ -6508,6 +6512,7 @@ private:
     std::atomic<int> namIrLength_[2]{};
     std::atomic<int> namIrActive_{0};
     std::atomic<bool> namIrEnabled_{false};
+    std::atomic<float> namIrLevel_{1.0f};
     std::atomic<bool> namIrReset_{false};
     std::array<float, kNamIrTaps> namIrHistory_{};
     int namIrWrite_ = 0;
@@ -8005,6 +8010,12 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_instrumental_attachment_NativeAudioEngine_nativeSetNamIr(
         JNIEnv *, jobject, jboolean on) {
     engine().setNamIr(on == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_instrumental_attachment_NativeAudioEngine_nativeSetNamIrLevel(
+        JNIEnv *, jobject, jfloat level) {
+    engine().setNamIrLevel(level);
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
