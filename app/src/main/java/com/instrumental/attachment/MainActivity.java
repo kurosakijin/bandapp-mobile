@@ -767,6 +767,10 @@ public final class MainActivity extends Activity {
                 prefs.getInt("guitar_cab_ir_index", metalRigStyle == 0 ? 0 : 1)));
         cabinetIrLevel = Math.max(0f, Math.min(1.5f,
                 prefs.getFloat("cabinet_ir_level", 1.0f)));
+        for (int i = 0; i < liveControlValues.length; i++) {
+            liveControlValues[i] = Math.max(0f, Math.min(1f,
+                    prefs.getFloat("live_control_" + i, liveControlValues[i])));
+        }
         virtualGuitarOutputLevel = Math.max(0f, Math.min(1.5f,
                 prefs.getFloat("virtual_guitar_output_level", 1.0f)));
         metalBoostDrive = prefs.getFloat("metal_boost_drive", 0.34f);
@@ -6710,10 +6714,13 @@ public final class MainActivity extends Activity {
         // DI chords carry substantially more energy than single picked notes.
         // Keep fixed headroom before NAM so power chords do not turn into
         // broadband intermodulation; model/output gain restores stage level.
-        float inputGain = 0.15f + guitarInputLevel * 0.85f;
+        // 50% is unity, 0% is a real mute, and 100% provides +6 dB for quiet
+        // interfaces. Native applies this before Gate/Comp/Wah and NAM bypass.
+        float inputGain = guitarInputLevel * 2.0f;
         engine.setNam(enabled, 1.0f, inputGain, 1.60f);
         engine.setNamIr(enabled && cabOn && engine.namIrReady());
         engine.setNamIrLevel(cabinetIrLevel);
+        engine.setGuitarCab(cabOn, cabType, 1.0f);
     }
 
     private void pushBuiltInMetalRigFx() {
@@ -14852,6 +14859,11 @@ public final class MainActivity extends Activity {
                 liveControlValues[4],
                 liveControlValues[5]
         );
+        SharedPreferences.Editor liveEditor = prefs.edit();
+        for (int i = 0; i < 6; i++) {
+            liveEditor.putFloat("live_control_" + i, liveControlValues[i]);
+        }
+        liveEditor.apply();
         if (currentMode == InstrumentMode.PIANO) {
             // The "Mod" knob (index 2) is a live chorus control for the sampled
             // piano; tone/drive/trem stay at the current preset's baked values.

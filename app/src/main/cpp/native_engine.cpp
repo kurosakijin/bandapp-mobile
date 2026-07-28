@@ -413,7 +413,9 @@ public:
         // output on them — so any explicitly-chosen device gets a safe 3-burst
         // start instead. Adaptive growth (+ the ADPF hint) still lifts either.
         int32_t startBursts;
-        if (output->getSharingMode() == oboe::SharingMode::Exclusive) {
+        if (config.inputRoute != kRouteMidi) {
+            startBursts = 3;
+        } else if (output->getSharingMode() == oboe::SharingMode::Exclusive) {
             startBursts = 1;
         } else if (config.outputDeviceId != kNoDevice) {
             startBursts = 2;
@@ -1516,7 +1518,7 @@ public:
     void setNam(bool enabled, float mix, float inputGain, float outputGain) {
         namEnabled_.store(enabled);
         namMix_.store(clampFloat(mix, 0.0f, 1.0f));
-        namInputGain_.store(clampFloat(inputGain, 0.05f, 8.0f));
+        namInputGain_.store(clampFloat(inputGain, 0.0f, 2.5f));
         namOutputGain_.store(clampFloat(outputGain, 0.05f, 4.0f));
     }
 
@@ -1667,13 +1669,8 @@ public:
                 stableCallbacks_ = 0;
                 int32_t want = audioStream->getBufferSizeInFrames() + burstFrames_;
                 audioStream->setBufferSizeInFrames(std::min(want, maxBufFrames_));
-            } else if (++stableCallbacks_ >= 512) {
-                stableCallbacks_ = 0;
-                int32_t current = audioStream->getBufferSizeInFrames();
-                if (current > minBufFrames_) {
-                    audioStream->setBufferSizeInFrames(
-                            std::max(minBufFrames_, current - burstFrames_));
-                }
+            } else {
+                ++stableCallbacks_;
             }
         }
         // Measured touch-free output latency (buffer + DSP + DAC), sampled
@@ -1697,8 +1694,8 @@ public:
             // normal burst jitter never drops frames (dropped frames click).
             auto avail = inputStream->getAvailableFrames();
             if (avail.error() == oboe::Result::OK
-                    && avail.value() > framesToRead * 4) {
-                int32_t excess = avail.value() - framesToRead;
+                    && avail.value() > framesToRead * 8) {
+                int32_t excess = avail.value() - framesToRead * 3;
                 while (excess > 0) {
                     int32_t chunk = std::min(excess, framesToRead);
                     auto drop = inputStream->read(inputBuffer_.data(), chunk, 0);
@@ -1719,6 +1716,20 @@ public:
         }
         if (inputMute_.load(std::memory_order_relaxed)) {
             framesRead = 0;   // "input off": every path below sees pure silence
+            inputTail_ = 0.0f;
+        } else if (framesRead < framesToRead) {
+            float tail = framesRead > 0 ? sanitize(inputBuffer_[framesRead - 1])
+                                        : inputTail_;
+            int32_t missing = framesToRead - framesRead;
+            for (int32_t i = 0; i < missing; ++i) {
+                inputBuffer_[framesRead + i] = tail
+                        * (1.0f - static_cast<float>(i + 1)
+                                / static_cast<float>(missing));
+            }
+            framesRead = framesToRead;
+            inputTail_ = 0.0f;
+        } else if (framesRead > 0) {
+            inputTail_ = sanitize(inputBuffer_[framesRead - 1]);
         }
         // Instrument line-in (Loop Mix): read but never subject to the mic mute.
         int32_t instRead = 0;
@@ -2638,6 +2649,11 @@ public:
             float input = frame < framesRead ? inputBuffer_[frame] : 0.0f;
             input = sanitize(input);
             pushPitchSample(input);
+            if (instrument == kElectricGuitar) {
+                // Rack Input is the first stage and remains effective when NAM
+                // or its cabinet is bypassed. It is intentionally pre-gate.
+                input *= namInputGain_.load(std::memory_order_relaxed);
+            }
             sumSquares += input * input;
 
             // Noise gate on the DRY input: idle hiss/hum (which high-gain amp
@@ -3195,12 +3211,12 @@ private:
         }
 
         const float mix = namMix_.load(std::memory_order_relaxed);
-        float inputGain = namInputGain_.load(std::memory_order_relaxed);
+        float inputGain = 1.0f;
         if (!virtualGuitarMode_.load(std::memory_order_relaxed)) {
-            // The visible Guitar Gain fader controls level into NAM. Previous
-            // builds sent it only to the bypassed legacy amp.
-            inputGain *= 0.05f
-                    + control1_.load(std::memory_order_relaxed) * 1.45f;
+            // PEDAL Gain is independent from the rack Input stage: it controls
+            // how hard the DI hits the NAM capture.
+            inputGain = 0.05f
+                    + control1_.load(std::memory_order_relaxed) * 1.95f;
         }
         const float outputGain = namOutputGain_.load(std::memory_order_relaxed);
         int32_t offset = 0;
@@ -3237,10 +3253,12 @@ private:
                 }
                 float dryL = stereo[frame * 2];
                 float dryR = stereo[frame * 2 + 1];
-                stereo[frame * 2] = softKneeLimit(
-                        dryL + (wet - dryL) * mix, 0.82f, 1.08f);
-                stereo[frame * 2 + 1] = softKneeLimit(
-                        dryR + (wet - dryR) * mix, 0.82f, 1.08f);
+                // Preserve cabinet and NAM level changes here. The chain has a
+                // single final safety limiter after all post effects.
+                stereo[frame * 2] = clampFloat(
+                        dryL + (wet - dryL) * mix, -4.0f, 4.0f);
+                stereo[frame * 2 + 1] = clampFloat(
+                        dryR + (wet - dryR) * mix, -4.0f, 4.0f);
             }
             offset += count;
         }
@@ -3520,7 +3538,7 @@ private:
         }
         // Max level = 0.55 peak: even a maxed-out knob stays clear of clipping
         // (and the meter's red zone) — matches the piano/drum balance targets.
-        return shaped * (0.22f + level * 0.33f);
+        return shaped * (level * 0.64f);
     }
 
     float processMetalBoost(float input) {
@@ -3607,11 +3625,26 @@ private:
             guitarModWrite_ = (guitarModWrite_ + 1) % size;
             shaped = shaped * (1.0f - depth * 0.28f) + chorus * depth * 0.48f;
         }
+        if (guitarDelayOn_.load(std::memory_order_relaxed)) {
+            int size = static_cast<int>(guitarDelay_.size());
+            int delaySamples = static_cast<int>((0.06f
+                    + guitarDelayTime_.load(std::memory_order_relaxed) * 0.84f)
+                    * sampleRate_);
+            delaySamples = std::max(1, std::min(size - 1, delaySamples));
+            int read = guitarDelayWrite_ - delaySamples;
+            if (read < 0) read += size;
+            float echo = guitarDelay_[read];
+            float feedback = guitarDelayFeedback_.load(std::memory_order_relaxed);
+            guitarDelay_[guitarDelayWrite_] = softClip(shaped + echo * feedback);
+            guitarDelayWrite_ = (guitarDelayWrite_ + 1) % size;
+            float mix = guitarDelayMix_.load(std::memory_order_relaxed);
+            shaped = shaped * (1.0f - mix * 0.35f) + echo * mix;
+        }
         if (guitarRoomOn_.load(std::memory_order_relaxed)) {
             shaped += processReverb(0, shaped)
                     * guitarRoomMix_.load(std::memory_order_relaxed);
         }
-        return softClip(shaped);
+        return clampFloat(shaped, -4.0f, 4.0f);
     }
 
     float processBass(float input, int tone) {
@@ -6465,9 +6498,10 @@ private:
     int32_t burstFrames_ = 0;       // device burst, used for adaptive buffer sizing
     int32_t prevXRuns_ = 0;         // last seen underrun count (glitch tracking)
     int32_t maxBufFrames_ = 0;      // cap for adaptive buffer growth
-    int32_t minBufFrames_ = 0;      // low-latency floor after stable recovery
+    int32_t minBufFrames_ = 0;      // stable low-latency floor for this session
     int32_t stableCallbacks_ = 0;   // callbacks since the last underrun
     std::array<float, kInputBufferCapacity> inputBuffer_{};
+    float inputTail_ = 0.0f;        // bridges occasional short capture reads
     std::array<float, kInputBufferCapacity> instBuffer_{};   // instrument line-in
     std::array<float, kGkPolyWindow> pitchBuffer_{};
     std::array<float, kGkPolyWindow> analysisBuffer_{};

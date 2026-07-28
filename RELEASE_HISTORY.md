@@ -1,5 +1,17 @@
 # Release History
 
+## 1.1.95 (version code 366) - 2026-07-29
+
+- Rewired every Guitar rack level so Input, NAM Gain, EQ, cabinet level, Delay,
+  Room, and final Output affect the correct DSP stage with audible ranges.
+- Made Input and Output true mute-capable controls, synchronized CAB bypass with
+  the default Guitar path, and persisted all six pedal controls.
+- Removed the adaptive buffer shrink cycle that caused repeating underrun
+  clicks, raised live-input stability to three bursts, and made backlog trimming
+  less aggressive.
+- Added a short-read fade so temporary microphone/interface capture shortages
+  no longer create abrupt zero edges heard as `tak` or crunching.
+
 ## 1.1.94 (version code 365) - 2026-07-29
 
 - Restored the former Guitar chorus pedal choices as Classic, Warm, and Shimmer

@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.94` / version code `365`
+- Current version: `1.1.95` / version code `366`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,19 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.95 - Guitar Control Routing and Anti-Click Audio
+
+- Guitar Input now runs before Gate/Comp/Wah in both NAM and bypass paths, with
+  0% mute, 50% unity, 100% +6 dB, and a matching input meter.
+- NAM Gain is independent drive; EQ and cabinet level are no longer flattened
+  by intermediate saturation; generic Delay now runs after NAM.
+- CAB bypass and final Output work with either NAM or the default Guitar path,
+  and all six pedal controls persist across launches.
+- Live-input streams no longer shrink their buffer after stable callbacks, which
+  removed the repeating underrun grow/shrink `tak` cycle.
+- Live Guitar uses a stable three-burst floor, conservative backlog trimming,
+  and a linear fade over occasional short capture reads.
 
 ## Release 1.1.94 - Restored Guitar Chorus Pedals
 
