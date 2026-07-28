@@ -5987,7 +5987,8 @@ private:
             energy += samples[i] * samples[i];
         }
         float rms = std::sqrt(energy / static_cast<float>(count));
-        if (rms < 0.006f) {
+        bool tuner = instrument_.load(std::memory_order_relaxed) == kTuner;
+        if (rms < (tuner ? 0.012f : 0.006f)) {
             return 0.0f;
         }
 
@@ -6020,7 +6021,7 @@ private:
             }
         }
 
-        if (bestLag <= 0 || bestScore < 0.38f) {
+        if (bestLag <= 0 || bestScore < (tuner ? 0.58f : 0.38f)) {
             return 0.0f;
         }
         // The global max flips between the true period and its octave multiples

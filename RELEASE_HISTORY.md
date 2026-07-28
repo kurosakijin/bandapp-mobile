@@ -1,5 +1,13 @@
 # Release History
 
+## 1.1.96 (version code 367) - 2026-07-29
+
+- Replaced white text on every opaque light landing-page card, feature button,
+  Tuner card, status pill, and BETA badge with high-contrast dark text.
+- Stabilized the chromatic tuner with stronger tuner-specific signal/confidence
+  thresholds, three-reading acquisition, four-reading note-change hysteresis,
+  brief signal-loss hold, and bounded cents-domain smoothing.
+
 ## 1.1.95 (version code 366) - 2026-07-29
 
 - Rewired every Guitar rack level so Input, NAM Gain, EQ, cabinet level, Delay,

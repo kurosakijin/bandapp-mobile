@@ -506,6 +506,10 @@ public final class MainActivity extends Activity {
     private TunerMeterView tunerMeter;
     private TextView tunerHzText;
     private Runnable tunerTick;
+    private float tunerStableMidi = Float.NaN;
+    private int tunerCandidateNote = Integer.MIN_VALUE;
+    private int tunerCandidateCount;
+    private int tunerMissCount;
     private boolean drumMidiIn = true;
     private boolean onMidiAssignScreen;
     private boolean onFullKeyboard;
@@ -1166,14 +1170,14 @@ public final class MainActivity extends Activity {
         gridHeader.setGravity(Gravity.CENTER_VERTICAL);
         TextView gridTitle = new TextView(this);
         gridTitle.setText("Instruments");
-        gridTitle.setTextColor(Color.WHITE);
+        gridTitle.setTextColor(COLOR_TEXT);
         gridTitle.setTextSize(24);
         gridTitle.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         gridHeader.addView(gridTitle, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
         TextView ready = new TextView(this);
         ready.setText("READY");
-        ready.setTextColor(Color.WHITE);
+        ready.setTextColor(COLOR_TEXT);
         ready.setTextSize(11);
         ready.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         ready.setLetterSpacing(0.08f);
@@ -1247,14 +1251,14 @@ public final class MainActivity extends Activity {
 
         TextView name = new TextView(this);
         name.setText(mode.label);
-        name.setTextColor(Color.WHITE);
+        name.setTextColor(COLOR_TEXT);
         name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         name.setTextSize(20);
         card.addView(name, matchWrap());
 
         TextView desc = new TextView(this);
         desc.setText(description);
-        desc.setTextColor(Color.WHITE);
+        desc.setTextColor(COLOR_MUTED);
         desc.setTextSize(13);
         card.addView(desc, topMargin(matchWrap(), 6));
         return card;
@@ -1289,7 +1293,7 @@ public final class MainActivity extends Activity {
 
         TextView name = new TextView(this);
         name.setText(mode.label);
-        name.setTextColor(Color.WHITE);
+        name.setTextColor(COLOR_TEXT);
         name.setGravity(Gravity.CENTER);
         name.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         name.setTextSize(15);
@@ -1299,7 +1303,7 @@ public final class MainActivity extends Activity {
 
         TextView tag = new TextView(this);
         tag.setText(taglineFor(mode));
-        tag.setTextColor(Color.WHITE);
+        tag.setTextColor(COLOR_MUTED);
         tag.setGravity(Gravity.CENTER);
         tag.setTextSize(11);
         tag.setSingleLine(true);
@@ -1333,7 +1337,7 @@ public final class MainActivity extends Activity {
 
         TextView name = new TextView(this);
         name.setText("Virtual Guitar MIDI");
-        name.setTextColor(Color.WHITE);
+        name.setTextColor(COLOR_TEXT);
         name.setGravity(Gravity.CENTER);
         name.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         name.setTextSize(13);
@@ -1343,7 +1347,7 @@ public final class MainActivity extends Activity {
 
         TextView tag = new TextView(this);
         tag.setText("MIDI guitarist");
-        tag.setTextColor(Color.WHITE);
+        tag.setTextColor(COLOR_MUTED);
         tag.setGravity(Gravity.CENTER);
         tag.setTextSize(11);
         tag.setSingleLine(true);
@@ -1364,7 +1368,7 @@ public final class MainActivity extends Activity {
     private TextView betaBadge() {
         TextView badge = new TextView(this);
         badge.setText("BETA");
-        badge.setTextColor(Color.WHITE);
+        badge.setTextColor(COLOR_TEXT);
         badge.setTextSize(9);
         badge.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         badge.setLetterSpacing(0.10f);
@@ -1405,7 +1409,7 @@ public final class MainActivity extends Activity {
         text.setOrientation(LinearLayout.VERTICAL);
         TextView name = new TextView(this);
         name.setText("Tuner");
-        name.setTextColor(Color.WHITE);
+        name.setTextColor(COLOR_TEXT);
         name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         name.setTextSize(20);
         name.setSingleLine(true);
@@ -1413,7 +1417,7 @@ public final class MainActivity extends Activity {
         text.addView(name, matchWrap());
         TextView desc = new TextView(this);
         desc.setText("Tune any instrument · mic or USB-C");
-        desc.setTextColor(Color.WHITE);
+        desc.setTextColor(COLOR_MUTED);
         desc.setTextSize(13);
         desc.setMaxLines(2);
         desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -1425,7 +1429,7 @@ public final class MainActivity extends Activity {
 
         TextView chev = new TextView(this);
         chev.setText("›");
-        chev.setTextColor(Color.WHITE);
+        chev.setTextColor(COLOR_TEXT);
         chev.setTextSize(26);
         card.addView(chev, matchWrap());
         return card;
@@ -10650,7 +10654,7 @@ public final class MainActivity extends Activity {
         text.setOrientation(LinearLayout.VERTICAL);
         TextView name = new TextView(this);
         name.setText("Loop Mix");
-        name.setTextColor(Color.WHITE);
+        name.setTextColor(COLOR_TEXT);
         name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         name.setTextSize(17);
         name.setSingleLine(true);
@@ -10658,7 +10662,7 @@ public final class MainActivity extends Activity {
         text.addView(name, matchWrap());
         TextView desc = new TextView(this);
         desc.setText("Loop & overdub");
-        desc.setTextColor(Color.WHITE);
+        desc.setTextColor(COLOR_MUTED);
         desc.setTextSize(11);
         desc.setMaxLines(2);
         desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -10703,7 +10707,7 @@ public final class MainActivity extends Activity {
         text.setOrientation(LinearLayout.VERTICAL);
         TextView name = new TextView(this);
         name.setText("Vocals");
-        name.setTextColor(Color.WHITE);
+        name.setTextColor(COLOR_TEXT);
         name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         name.setTextSize(17);
         name.setSingleLine(true);
@@ -10711,7 +10715,7 @@ public final class MainActivity extends Activity {
         text.addView(name, matchWrap());
         TextView desc = new TextView(this);
         desc.setText("Live vocal FX");
-        desc.setTextColor(Color.WHITE);
+        desc.setTextColor(COLOR_MUTED);
         desc.setTextSize(11);
         desc.setMaxLines(2);
         desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -10756,7 +10760,7 @@ public final class MainActivity extends Activity {
         text.setOrientation(LinearLayout.VERTICAL);
         TextView name = new TextView(this);
         name.setText("Guitar Keys");
-        name.setTextColor(Color.WHITE);
+        name.setTextColor(COLOR_TEXT);
         name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         name.setTextSize(17);
         name.setSingleLine(true);
@@ -10764,7 +10768,7 @@ public final class MainActivity extends Activity {
         text.addView(name, matchWrap());
         TextView desc = new TextView(this);
         desc.setText("Guitar → piano");
-        desc.setTextColor(Color.WHITE);
+        desc.setTextColor(COLOR_MUTED);
         desc.setTextSize(11);
         desc.setMaxLines(2);
         desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -14098,6 +14102,10 @@ public final class MainActivity extends Activity {
         }
         if (!onTunerScreen) {
             onTunerScreen = true;
+            tunerStableMidi = Float.NaN;
+            tunerCandidateNote = Integer.MIN_VALUE;
+            tunerCandidateCount = 0;
+            tunerMissCount = 0;
             loadAudioPrefs();
             engine.startTuner(resolvePreferredInput(-1), resolvePreferredOutput(-1));
         }
@@ -14175,15 +14183,58 @@ public final class MainActivity extends Activity {
     private void updateTuner() {
         float hz = engine.pitchHz();
         if (hz < 25f || hz > 2000f) {
-            tunerMeter.setReading(0f, false);
-            tunerHzText.setText("Listening… play a single note");
+            if (++tunerMissCount >= 5) {
+                tunerStableMidi = Float.NaN;
+                tunerCandidateNote = Integer.MIN_VALUE;
+                tunerCandidateCount = 0;
+                tunerMeter.setReading(0f, false);
+                tunerHzText.setText("Listening… play a single note");
+            }
             return;
         }
-        double midi = 69.0 + 12.0 * (Math.log(hz / 440.0) / Math.log(2.0));
-        int nearest = (int) Math.round(midi);
-        int cents = (int) Math.round((midi - nearest) * 100.0);
-        tunerMeter.setReading((float) midi, true);
-        tunerHzText.setText(String.format(Locale.US, "%.1f Hz    %+d cents", hz, cents));
+        tunerMissCount = 0;
+        float rawMidi = (float) (69.0
+                + 12.0 * (Math.log(hz / 440.0) / Math.log(2.0)));
+        int rawNote = Math.round(rawMidi);
+        if (Float.isNaN(tunerStableMidi)) {
+            if (rawNote == tunerCandidateNote) tunerCandidateCount++;
+            else {
+                tunerCandidateNote = rawNote;
+                tunerCandidateCount = 1;
+            }
+            if (tunerCandidateCount < 3) {
+                tunerMeter.setReading(0f, false);
+                tunerHzText.setText("Hold one note…");
+                return;
+            }
+            tunerStableMidi = rawMidi;
+        } else if (rawNote == Math.round(tunerStableMidi)) {
+            tunerCandidateNote = rawNote;
+            tunerCandidateCount = 0;
+            // Smooth in cents space and cap one update so a bad frame cannot
+            // throw the needle across the display.
+            float delta = Math.max(-0.12f, Math.min(0.12f,
+                    rawMidi - tunerStableMidi));
+            tunerStableMidi += delta * 0.28f;
+        } else {
+            if (rawNote == tunerCandidateNote) tunerCandidateCount++;
+            else {
+                tunerCandidateNote = rawNote;
+                tunerCandidateCount = 1;
+            }
+            // Require a sustained new note before changing strings/octaves.
+            if (tunerCandidateCount >= 4) {
+                tunerStableMidi = rawMidi;
+                tunerCandidateCount = 0;
+            }
+        }
+        int nearest = Math.round(tunerStableMidi);
+        int cents = Math.round((tunerStableMidi - nearest) * 100f);
+        float stableHz = 440f * (float) Math.pow(2.0,
+                (tunerStableMidi - 69f) / 12f);
+        tunerMeter.setReading(tunerStableMidi, true);
+        tunerHzText.setText(String.format(Locale.US,
+                "%.1f Hz    %+d cents", stableHz, cents));
     }
 
     private void paintStage(View view) {

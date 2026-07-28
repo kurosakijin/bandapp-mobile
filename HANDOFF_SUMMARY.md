@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.95` / version code `366`
+- Current version: `1.1.96` / version code `367`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,16 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.96 - Landing Contrast and Stable Tuner
+
+- All light landing-page cards and badges now use dark title/description text;
+  white text remains only on the deliberately dark brand rail.
+- The tuner rejects weak or poorly correlated background input, waits for three
+  consistent readings before acquiring a note, and requires four readings to
+  switch strings or octaves.
+- A five-tick signal-loss hold and bounded cents smoothing keep the tuner steady
+  without making deliberate note changes feel stuck.
 
 ## Release 1.1.95 - Guitar Control Routing and Anti-Click Audio
 
