@@ -207,13 +207,14 @@ public final class MainActivity extends Activity {
     private static final String[] GUITAR_NAM_NAMES = {
             "Metal - Tight 5153", "Metal - High Gain JCM", "Rock - Boutique Lead",
             "Rock - AC Chime", "Clean - American Deluxe",
-            "Jazz / Chorus / Rhodes - JC Clean", "Bass - Ampeg Warm"
+            "Jazz / Rhodes - JC Clean", "Bass - Ampeg Warm",
+            "Clean Chorus - JC Wide"
     };
     private static final String[] GUITAR_NAM_ASSETS = {
             "guitar_rig/metal_5153.nam", "guitar_rig/fuzz_jcm.nam",
             "guitar_rig/amp_dumble.nam", "guitar_rig/amp_ac10.nam",
             "guitar_rig/amp_deluxe.nam", "guitar_rig/amp_jc.nam",
-            "guitar_rig/amp_ampeg.nam"
+            "guitar_rig/amp_ampeg.nam", "guitar_rig/amp_jc.nam"
     };
     private static final String[] GUITAR_CAB_NAMES = {
             "Metal · Mesa Modern 4x12", "Rock · Lead 800 Celestion",
@@ -755,10 +756,7 @@ public final class MainActivity extends Activity {
         guitarRoomOn = prefs.getBoolean("guitar_room_on", false);
         guitarRoomMix = prefs.getFloat("guitar_room_mix", 0.22f);
         guitarInputLevel = prefs.getFloat("guitar_input_level", 0.50f);
-        // The regular Guitar is now a NAM + cabinet instrument. It no longer
-        // falls back to the legacy pedal amp path between launches.
-        guitarNamTestOn = true;
-        prefs.edit().putBoolean("guitar_nam_test_on", true).apply();
+        guitarNamTestOn = prefs.getBoolean("guitar_nam_test_on", true);
         metalRigStyle = Math.max(-1, Math.min(1, prefs.getInt("metal_rig_style", 0)));
         guitarNamIndex = Math.max(0, Math.min(GUITAR_NAM_NAMES.length - 1,
                 prefs.getInt("guitar_nam_index", metalRigStyle == 0 ? 0 : 1)));
@@ -1545,7 +1543,11 @@ public final class MainActivity extends Activity {
         } else {
             String barLabel = currentMode == InstrumentMode.DRUMS ? "KIT"
                     : (currentMode == InstrumentMode.ELECTRIC_GUITAR ? "NAM PEDAL" : "PEDAL");
-            rail.addView(buildSoundBar(barLabel), topMargin(matchWrap(), 10));
+            // Guitar NAM selection belongs to the PEDAL stage in the signal
+            // chain. Keep the left rail clear of a duplicate selector.
+            if (currentMode != InstrumentMode.ELECTRIC_GUITAR) {
+                rail.addView(buildSoundBar(barLabel), topMargin(matchWrap(), 10));
+            }
             if (currentMode != InstrumentMode.DRUMS) {
                 rail.addView(buildMeterBar(), topMargin(matchWrap(), 10));
             } else {
@@ -6501,9 +6503,8 @@ public final class MainActivity extends Activity {
         shell.addView(signalChainView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(82)));
 
-        // NAM selection now lives in the fixed NAM AMP bar. There is no
-        // duplicate test/bypass panel in the rack.
-        guitarNamTestOn = true;
+        // Keep the selected NAM ready even while bypassed so enabling the
+        // pedal is immediate and does not discard its controls.
         pushBuiltInMetalRigFx();
         pushBuiltInMetalRigState();
         if (!guitarNamTestReady) loadBuiltInMetalRig();
@@ -6536,10 +6537,19 @@ public final class MainActivity extends Activity {
         wah.addView(buildWahRow(), matchWrap());
         rack.addView(wah, topMargin(matchWrap(), 8));
 
-        LinearLayout amp = stagePanel("05  NAM PEDAL · EQ", toneAccentStatic(currentPreset));
-        TextView ampName = labelText(GUITAR_NAM_NAMES[guitarNamIndex].toUpperCase(Locale.ROOT));
-        ampName.setTextColor(COLOR_TEXT);
-        amp.addView(ampName, matchWrap());
+        LinearLayout amp = stagePanel("05  PEDAL · NAM AMP · EQ", toneAccentStatic(currentPreset));
+        Button pedalEnabled = chipButton("✓ PEDAL");
+        styleChipButton(pedalEnabled, guitarNamTestOn);
+        pedalEnabled.setOnClickListener(v -> {
+            guitarNamTestOn = !guitarNamTestOn;
+            prefs.edit().putBoolean("guitar_nam_test_on", guitarNamTestOn).apply();
+            styleChipButton(pedalEnabled, guitarNamTestOn);
+            pushBuiltInMetalRigState();
+        });
+        amp.addView(pedalEnabled, matchWrap());
+        Button ampPicker = chipButton("NAM · " + GUITAR_NAM_NAMES[guitarNamIndex]);
+        ampPicker.setOnClickListener(v -> showGuitarNamPicker());
+        amp.addView(ampPicker, topMargin(matchWrap(), 8));
         liveControlView = new LiveControlView(this);
         liveControlView.setVisibleFaders(5);
         liveControlView.setControlsChangedListener(this::applyLiveControls);
@@ -6548,10 +6558,19 @@ public final class MainActivity extends Activity {
         rack.addView(amp, topMargin(matchWrap(), 8));
 
         LinearLayout cab = stagePanel("06  CABINET · IR", 0xffdf9d32);
+        Button cabinetEnabled = chipButton("✓ CAB");
+        styleChipButton(cabinetEnabled, cabOn);
+        cabinetEnabled.setOnClickListener(v -> {
+            cabOn = !cabOn;
+            prefs.edit().putBoolean("guitar_cab_on", cabOn).apply();
+            styleChipButton(cabinetEnabled, cabOn);
+            pushBuiltInMetalRigState();
+        });
+        cab.addView(cabinetEnabled, matchWrap());
         Button cabinetPicker = chipButton(
                 "Cabinet IR · " + GUITAR_CAB_NAMES[guitarCabIrIndex]);
         cabinetPicker.setOnClickListener(v -> showGuitarCabinetPicker());
-        cab.addView(cabinetPicker, matchWrap());
+        cab.addView(cabinetPicker, topMargin(matchWrap(), 8));
         cab.addView(buildRackSlider("Cab level", cabinetIrLevel / 1.5f, value -> {
             cabinetIrLevel = value * 1.5f;
             prefs.edit().putFloat("cabinet_ir_level", cabinetIrLevel).apply();
@@ -6650,7 +6669,7 @@ public final class MainActivity extends Activity {
         // broadband intermodulation; model/output gain restores stage level.
         float inputGain = 0.15f + guitarInputLevel * 0.85f;
         engine.setNam(enabled, 1.0f, inputGain, 1.60f);
-        engine.setNamIr(enabled && engine.namIrReady());
+        engine.setNamIr(enabled && cabOn && engine.namIrReady());
         engine.setNamIrLevel(cabinetIrLevel);
     }
 
@@ -6702,6 +6721,15 @@ public final class MainActivity extends Activity {
                     ir.samples, ir.frames, ir.channels, ir.rate);
             handler.post(() -> {
                 guitarNamTestLoading = false;
+                if (requestedNam != guitarNamIndex || requestedCab != guitarCabIrIndex) {
+                    // A newer picker choice arrived while this model/IR was
+                    // loading. Do not leave the audio engine on the stale
+                    // cabinet just because the first request was in flight.
+                    finishSoundLoad();
+                    refreshBuiltInMetalRig();
+                    loadBuiltInMetalRig();
+                    return;
+                }
                 guitarNamTestReady = modelOk && irOk;
                 finishSoundLoad();
                 if (guitarNamTestReady) {
@@ -7193,20 +7221,29 @@ public final class MainActivity extends Activity {
                             metalRigStyle = -1;
                             if (index == 4) guitarCabIrIndex = 23;
                             else if (index == 5) guitarCabIrIndex = 25;
+                            else if (index == 7) {
+                                guitarCabIrIndex = 26;
+                                guitarModOn = true;
+                                guitarModRate = 0.22f;
+                                guitarModDepth = 0.48f;
+                            }
                         }
                     }
-                    guitarNamTestOn = true;
                     guitarNamTestReady = false;
                     prefs.edit()
                             .putInt("guitar_nam_index", guitarNamIndex)
                             .putInt("guitar_cab_ir_index", guitarCabIrIndex)
                             .putInt("metal_rig_style", metalRigStyle)
-                            .putBoolean("guitar_nam_test_on", true)
+                            .putBoolean("guitar_nam_test_on", guitarNamTestOn)
+                            .putBoolean("guitar_mod_on", guitarModOn)
+                            .putFloat("guitar_mod_rate", guitarModRate)
+                            .putFloat("guitar_mod_depth", guitarModDepth)
                             .apply();
                     if (soundBarText != null) {
                         soundBarText.setText(GUITAR_NAM_NAMES[guitarNamIndex]);
                     }
                     pushBuiltInMetalRigFx();
+                    pushGuitarRackFx();
                     dialog.dismiss();
                     loadBuiltInMetalRig();
                 });
@@ -14983,13 +15020,18 @@ public final class MainActivity extends Activity {
                 styleChipButton(row, builtIn.uri.equals(activeNamUri));
                 row.setOnClickListener(v -> {
                     dialog.dismiss();
-                    if (builtInIndex == 4 || builtInIndex == 5) {
+                    if (builtInIndex == 4 || builtInIndex == 5 || builtInIndex == 7) {
                         pianoGuitarNamInputDb = -6f;
-                        int cabIndex = builtInIndex == 4 ? 23 : 25;
+                        int cabIndex = builtInIndex == 4 ? 23
+                                : builtInIndex == 5 ? 25 : 26;
                         ExternalIrFile cleanCab = new ExternalIrFile(
                                 Uri.parse("asset://" + GUITAR_CAB_ASSETS[cabIndex]),
                                 GUITAR_CAB_NAMES[cabIndex], "Built-in", -1L);
                         loadNamIr(cleanCab, true);
+                        if (builtInIndex == 7) {
+                            liveControlValues[2] = 0.50f;
+                            applyLiveControls(liveControlValues);
+                        }
                     }
                     loadNamModel(builtIn, true);
                 });

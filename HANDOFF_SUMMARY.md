@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.92` / version code `363`
+- Current version: `1.1.93` / version code `364`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,19 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.93 - Guitar Latency, Live NAM Controls, and Stage Bypass
+
+- Live microphone Guitar now prefers an exclusive Oboe output stream and uses
+  smaller adaptive buffering with faster stale-input recovery.
+- Guitar's visible Gain and four-band tone controls now directly shape the NAM
+  input and post-NAM tone stack.
+- Clean Chorus - JC Wide enables a real chorus configuration and matching clean
+  cabinet response.
+- Cabinet selection is no longer lost when another NAM/IR request is loading;
+  the latest requested cabinet is applied next.
+- NAM selection now lives entirely in the PEDAL stage. PEDAL and CAB each have
+  persistent highlighted bypass buttons that retain all selected settings.
 
 ## Release 1.1.92 - Clean Cabinets, Chord Headroom, and Final Output
 

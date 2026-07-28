@@ -367,7 +367,12 @@ public:
             // instruments went silent on those sinks. Go straight to Shared,
             // which is what actually routes to them; only fall back to the
             // system default if the requested device can't be opened at all.
-            outputResult = openOutputStream(config.outputDeviceId, oboe::SharingMode::Shared, output);
+            outputResult = openOutputStream(
+                    config.outputDeviceId, oboe::SharingMode::Exclusive, output);
+            if (outputResult != oboe::Result::OK) {
+                outputResult = openOutputStream(
+                        config.outputDeviceId, oboe::SharingMode::Shared, output);
+            }
             if (outputResult != oboe::Result::OK) {
                 outputResult = openOutputStream(kNoDevice, oboe::SharingMode::Shared, output);
             }
@@ -396,7 +401,10 @@ public:
         // to silence underrun "tak"s on a busy device, while device capacity
         // (which can be seconds) no longer ratchets into half-second delay.
         int32_t cap = output->getBufferCapacityInFrames();
-        maxBufFrames_ = cap > 0 ? std::min(cap, burstFrames_ * 16) : burstFrames_ * 16;
+        int32_t maxBursts = config.inputRoute == kRouteMidi ? 12 : 8;
+        maxBufFrames_ = cap > 0
+                ? std::min(cap, burstFrames_ * maxBursts)
+                : burstFrames_ * maxBursts;
         // MIDI instruments (drums, piano) read no audio input and are lighter,
         // so on the built-in sink they start at a tighter 1-burst buffer for the
         // lowest note→sound latency; live-input rigs start at 2. External sinks
@@ -405,12 +413,16 @@ public:
         // output on them — so any explicitly-chosen device gets a safe 3-burst
         // start instead. Adaptive growth (+ the ADPF hint) still lifts either.
         int32_t startBursts;
-        if (config.outputDeviceId != kNoDevice) {
-            startBursts = 3;
+        if (output->getSharingMode() == oboe::SharingMode::Exclusive) {
+            startBursts = 1;
+        } else if (config.outputDeviceId != kNoDevice) {
+            startBursts = 2;
         } else {
             startBursts = config.inputRoute == kRouteMidi ? 1 : 2;
         }
-        output->setBufferSizeInFrames(std::min(burstFrames_ * startBursts, maxBufFrames_));
+        minBufFrames_ = std::min(burstFrames_ * startBursts, maxBufFrames_);
+        stableCallbacks_ = 0;
+        output->setBufferSizeInFrames(minBufFrames_);
 
         resetProcessor();
         {
@@ -1652,8 +1664,16 @@ public:
             int32_t xruns = audioStream->getXRunCount().value();
             if (xruns > prevXRuns_) {
                 prevXRuns_ = xruns;
+                stableCallbacks_ = 0;
                 int32_t want = audioStream->getBufferSizeInFrames() + burstFrames_;
                 audioStream->setBufferSizeInFrames(std::min(want, maxBufFrames_));
+            } else if (++stableCallbacks_ >= 512) {
+                stableCallbacks_ = 0;
+                int32_t current = audioStream->getBufferSizeInFrames();
+                if (current > minBufFrames_) {
+                    audioStream->setBufferSizeInFrames(
+                            std::max(minBufFrames_, current - burstFrames_));
+                }
             }
         }
         // Measured touch-free output latency (buffer + DSP + DAC), sampled
@@ -1677,8 +1697,8 @@ public:
             // normal burst jitter never drops frames (dropped frames click).
             auto avail = inputStream->getAvailableFrames();
             if (avail.error() == oboe::Result::OK
-                    && avail.value() > framesToRead * 6) {
-                int32_t excess = avail.value() - framesToRead * 2;
+                    && avail.value() > framesToRead * 4) {
+                int32_t excess = avail.value() - framesToRead;
                 while (excess > 0) {
                     int32_t chunk = std::min(excess, framesToRead);
                     auto drop = inputStream->read(inputBuffer_.data(), chunk, 0);
@@ -3175,7 +3195,13 @@ private:
         }
 
         const float mix = namMix_.load(std::memory_order_relaxed);
-        const float inputGain = namInputGain_.load(std::memory_order_relaxed);
+        float inputGain = namInputGain_.load(std::memory_order_relaxed);
+        if (!virtualGuitarMode_.load(std::memory_order_relaxed)) {
+            // The visible Guitar Gain fader controls level into NAM. Previous
+            // builds sent it only to the bypassed legacy amp.
+            inputGain *= 0.05f
+                    + control1_.load(std::memory_order_relaxed) * 1.45f;
+        }
         const float outputGain = namOutputGain_.load(std::memory_order_relaxed);
         int32_t offset = 0;
         while (offset < numFrames) {
@@ -3549,7 +3575,19 @@ private:
     }
 
     float processNamPostFx(float input) {
-        float shaped = input;
+        // Lightweight post-NAM tone stack for the visible Guitar pedal knobs.
+        // Center is neutral; each band spans approximately +/-9 dB.
+        namToneLow_ += 0.025f * (input - namToneLow_);
+        namToneMid_ += 0.12f * (input - namToneMid_);
+        float high = input - namToneMid_;
+        float midBand = namToneMid_ - namToneLow_;
+        float bassGain = std::pow(10.0f, (c2_ - 0.5f) * 18.0f / 20.0f);
+        float midGain = std::pow(10.0f, (c3_ - 0.5f) * 18.0f / 20.0f);
+        float trebleGain = std::pow(10.0f, (c4_ - 0.5f) * 18.0f / 20.0f);
+        float presenceGain = 0.65f + c5_ * 0.70f;
+        float shaped = namToneLow_ * bassGain
+                + midBand * midGain
+                + high * trebleGain * presenceGain;
         if (guitarModOn_.load(std::memory_order_relaxed)) {
             int size = static_cast<int>(guitarModDelay_.size());
             guitarModDelay_[guitarModWrite_] = shaped;
@@ -6427,6 +6465,8 @@ private:
     int32_t burstFrames_ = 0;       // device burst, used for adaptive buffer sizing
     int32_t prevXRuns_ = 0;         // last seen underrun count (glitch tracking)
     int32_t maxBufFrames_ = 0;      // cap for adaptive buffer growth
+    int32_t minBufFrames_ = 0;      // low-latency floor after stable recovery
+    int32_t stableCallbacks_ = 0;   // callbacks since the last underrun
     std::array<float, kInputBufferCapacity> inputBuffer_{};
     std::array<float, kInputBufferCapacity> instBuffer_{};   // instrument line-in
     std::array<float, kGkPolyWindow> pitchBuffer_{};
@@ -6476,6 +6516,8 @@ private:
     std::array<float, 4096> guitarModDelay_{};
     int guitarModWrite_ = 0;
     float guitarModPhase_ = 0.0f;
+    float namToneLow_ = 0.0f;
+    float namToneMid_ = 0.0f;
     std::atomic<bool> guitarDelayOn_{false};
     std::atomic<float> guitarDelayTime_{0.32f};
     std::atomic<float> guitarDelayFeedback_{0.28f};

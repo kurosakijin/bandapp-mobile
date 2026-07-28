@@ -1,5 +1,18 @@
 # Release History
 
+## 1.1.93 (version code 364) - 2026-07-29
+
+- Reduced live Guitar input latency with exclusive-stream preference, smaller
+  adaptive buffers, faster input-backlog recovery, and gradual buffer shrink
+  after stable playback.
+- Connected Guitar NAM Gain, Bass, Mid, Treble, and Presence controls to the
+  native signal path and added the Clean Chorus - JC Wide preset.
+- Fixed cabinet choices made during an active load being displayed but dropped;
+  the newest selected IR now reloads after the in-flight request finishes.
+- Moved NAM selection from the left rail into the Guitar PEDAL signal-chain tab.
+- Added persistent highlighted PEDAL and CAB check buttons so NAM and cabinet
+  processing can be bypassed without losing selections or control settings.
+
 ## 1.1.92 (version code 363) - 2026-07-29
 
 - Added six genuinely distinct Jensen, Celestion, and ENGL cabinet responses
