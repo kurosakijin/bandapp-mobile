@@ -2815,6 +2815,12 @@ private:
 
         oboe::AudioStream *rawStream = nullptr;
         oboe::Result result = builder.openStream(&rawStream);
+        // Some OEM audio HALs expose the internal mic but reject the raw preset.
+        // Retain the selected device and retry with the broadly supported preset.
+        if (result != oboe::Result::OK) {
+            builder.setInputPreset(oboe::InputPreset::Generic);
+            result = builder.openStream(&rawStream);
+        }
         if (result == oboe::Result::OK) {
             stream.reset(rawStream);
         }

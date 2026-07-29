@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.102` / version code `373`
+- Current version: `1.1.103` / version code `374`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,16 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.103 - Tuner Input Routing
+
+- The tuner exposes its own input-source selector and defaults to the internal
+  microphone the first time it is opened.
+- Tuner input selection persists independently from guitar, vocals, and looper
+  routing, and switching it restarts capture immediately.
+- Internal-mic capture retries with Android's Generic input preset when an OEM
+  audio HAL rejects the low-latency Unprocessed preset.
+- Tuner status and reference labels use high-contrast text.
 
 ## Release 1.1.102 - Audible Drum Kit Normalization
 

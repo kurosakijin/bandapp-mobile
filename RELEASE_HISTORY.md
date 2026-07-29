@@ -1,5 +1,14 @@
 # Release History
 
+## 1.1.103 (version code 374) - 2026-07-29
+
+- Added a visible input-source selector directly to the tuner screen.
+- Defaulted the tuner to the internal microphone on first use while retaining
+  independent tuner input preferences for internal, headset, and USB-C sources.
+- Added a compatible microphone-preset fallback for Android devices that reject
+  unprocessed internal-mic capture.
+- Increased tuner label and status contrast for readability.
+
 ## 1.1.102 (version code 373) - 2026-07-29
 
 - Fixed silent and near-silent drum kits caused by over-attenuating complete

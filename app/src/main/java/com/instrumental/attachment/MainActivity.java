@@ -508,6 +508,7 @@ public final class MainActivity extends Activity {
     private TextView snareRimToggle;
     private TunerMeterView tunerMeter;
     private TextView tunerHzText;
+    private TextView tunerInputText;
     private Runnable tunerTick;
     private float tunerStableMidi = Float.NaN;
     private int tunerCandidateNote = Integer.MIN_VALUE;
@@ -4845,6 +4846,9 @@ public final class MainActivity extends Activity {
         prefs.edit().putInt("audio_in_type_" + ctx, type)
                 .putString("audio_in_name_" + ctx, preferredInputName).apply();
         engine.setInputMute(type == -2);
+        if (tunerInputText != null) {
+            tunerInputText.setText("INPUT  ·  " + currentInputLabel());
+        }
         restartActiveEngine();
         Toast.makeText(this, "Input: " + currentInputLabel(), Toast.LENGTH_SHORT).show();
     }
@@ -14196,6 +14200,14 @@ public final class MainActivity extends Activity {
             tunerCandidateCount = 0;
             tunerMissCount = 0;
             loadAudioPrefs();
+            String tunerInputKey = "audio_in_type_tuner";
+            if (!prefs.contains(tunerInputKey)) {
+                preferredInputType = android.media.AudioDeviceInfo.TYPE_BUILTIN_MIC;
+                preferredInputName = "";
+                prefs.edit().putInt(tunerInputKey, preferredInputType)
+                        .putString("audio_in_name_tuner", "").apply();
+                engine.setInputMute(false);
+            }
             engine.startTuner(resolvePreferredInput(-1), resolvePreferredOutput(-1));
         }
 
@@ -14211,12 +14223,23 @@ public final class MainActivity extends Activity {
 
         rail.addView(railHeader(this::exitTuner, "CHROMATIC", "Tuner", COLOR_TEAL), matchWrap());
 
+        tunerInputText = new TextView(this);
+        tunerInputText.setText("INPUT  ·  " + currentInputLabel());
+        tunerInputText.setTextColor(COLOR_TEXT);
+        tunerInputText.setTextSize(14);
+        tunerInputText.setGravity(Gravity.CENTER);
+        tunerInputText.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        tunerInputText.setPadding(dp(12), dp(10), dp(12), dp(10));
+        tunerInputText.setBackground(pillBackground(Color.WHITE, COLOR_TEAL));
+        tunerInputText.setOnClickListener(v -> audioInputDialog());
+        rail.addView(tunerInputText, topMargin(matchWrap(), 12));
+
         View railGap = new View(this);
         rail.addView(railGap, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
 
         tunerHzText = new TextView(this);
-        tunerHzText.setTextColor(COLOR_MUTED);
+        tunerHzText.setTextColor(COLOR_TEXT);
         tunerHzText.setTextSize(15);
         tunerHzText.setGravity(Gravity.CENTER);
         tunerHzText.setText(engine.isRunning() ? "Listening… play a note" : "Couldn't start the tuner");
@@ -14224,7 +14247,7 @@ public final class MainActivity extends Activity {
 
         TextView ref = new TextView(this);
         ref.setText("Guitar  E A D G B E\nBass  E A D G");
-        ref.setTextColor(COLOR_DIM);
+        ref.setTextColor(COLOR_TEXT);
         ref.setTextSize(13);
         ref.setLineSpacing(dp(3), 1.0f);
         ref.setGravity(Gravity.CENTER);
@@ -14265,6 +14288,7 @@ public final class MainActivity extends Activity {
         }
         tunerMeter = null;
         tunerHzText = null;
+        tunerInputText = null;
         engine.stop();
         showPicker();
     }
