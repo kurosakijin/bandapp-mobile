@@ -1,5 +1,17 @@
 # Release History
 
+## 1.1.100 (version code 371) - 2026-07-29
+
+- Measured and normalized all 46 bundled drum SoundFonts against consistent
+  complete-kit and per-sample peak targets while retaining the 0.86 output ceiling.
+- Kept MIDI drums audible during Settings and MIDI Assignment, prevented pedal
+  bindings from stealing drum notes, removed redundant one-shot note-off events,
+  and capped adaptive Drum buffering to reduce latency and dropped fast strikes.
+- Fixed Full Kit default-piece routing after lazy kit loads and while MIDI remains
+  active, so changing the selected kit immediately changes inherited sounds.
+- Added MIDI-driven Full Kit strike animation: the mapped physical instrument
+  image punches and flashes regardless of its customized sound source.
+
 ## 1.1.99 (version code 370) - 2026-07-29
 
 - Raised the Funk kit's closed, pedal, and open hi-hats by 4 dB so all three

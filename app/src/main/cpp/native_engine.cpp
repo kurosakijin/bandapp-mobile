@@ -401,7 +401,11 @@ public:
         // to silence underrun "tak"s on a busy device, while device capacity
         // (which can be seconds) no longer ratchets into half-second delay.
         int32_t cap = output->getBufferCapacityInFrames();
-        int32_t maxBursts = config.inputRoute == kRouteMidi ? 12 : 8;
+        // Drums are synth-only and react badly when adaptive recovery retains a
+        // large buffer after a transient xrun. Four bursts still absorb brief
+        // scheduler stalls without allowing MIDI-to-hit latency to ratchet up.
+        bool midiDrums = config.instrument == kDrums;
+        int32_t maxBursts = midiDrums ? 4 : (config.inputRoute == kRouteMidi ? 12 : 8);
         maxBufFrames_ = cap > 0
                 ? std::min(cap, burstFrames_ * maxBursts)
                 : burstFrames_ * maxBursts;
@@ -413,7 +417,9 @@ public:
         // output on them — so any explicitly-chosen device gets a safe 3-burst
         // start instead. Adaptive growth (+ the ADPF hint) still lifts either.
         int32_t startBursts;
-        if (config.inputRoute != kRouteMidi) {
+        if (midiDrums) {
+            startBursts = output->getSharingMode() == oboe::SharingMode::Exclusive ? 1 : 2;
+        } else if (config.inputRoute != kRouteMidi) {
             startBursts = 3;
         } else if (output->getSharingMode() == oboe::SharingMode::Exclusive) {
             startBursts = 1;
@@ -5266,14 +5272,7 @@ private:
         if (slot < 0 || slot >= 12 || note < kTrimLoNote || note > kTrimHiNote) {
             return 1.0f;
         }
-        float trim = kKitNoteTrim[slot][note - kTrimLoNote];
-        // Funk's closed, pedal, and open hats remain quiet even at maximum MIDI
-        // velocity. Its font is loaded 4 dB hotter so those samples can cut;
-        // offset that lift everywhere else to preserve the balanced kit mix.
-        if (slot == 4 && note != 42 && note != 44 && note != 46) {
-            trim *= 0.631f; // -4 dB
-        }
-        return trim;
+        return kKitNoteTrim[slot][note - kTrimLoNote];
     }
 
     // Cymbals sit low on GM kits — lift them so they cut through. The three

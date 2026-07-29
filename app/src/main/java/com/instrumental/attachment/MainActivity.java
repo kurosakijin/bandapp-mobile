@@ -7837,6 +7837,9 @@ public final class MainActivity extends Activity {
             if (on && drumPadsView != null) {
                 drumPadsView.flashNote(note);
             }
+            if (on && drumKitView != null) {
+                drumKitView.flashNote(note);
+            }
             if (keyVizView != null) {
                 keyVizView.onNote(note, on);
             }
@@ -7883,7 +7886,7 @@ public final class MainActivity extends Activity {
             // once it finishes — the "sudden change of sound at first run".
             byte[] drumDefault = readAsset("drums_tama.sf2");
             if (drumDefault != null) {
-                engine.loadDrumFont(6, -9.1f, drumDefault);
+                engine.loadDrumFont(6, -13.8f, drumDefault);
             }
             // Gains measured on host (worst-case chord, target peak 0.70).
             loadHqAsset(0, 0, -8.6f, "grand.sf2");
@@ -7896,46 +7899,44 @@ public final class MainActivity extends Activity {
             // Piano library (slot 4) is lazy-loaded on selection — see loadLibraryPiano().
             byte[] drumHq = readAsset("drums_acoustic.sf2");
             if (drumHq != null) {
-                engine.loadDrumFont(0, -6.9f, drumHq);
+                engine.loadDrumFont(0, -19.0f, drumHq);
             }
             byte[] drum808 = readAsset("drums_808.sf2");
             if (drum808 != null) {
-                engine.loadDrumFont(1, -6.9f, drum808);
+                engine.loadDrumFont(1, -13.6f, drum808);
             }
             byte[] drum909 = readAsset("drums_909.sf2");
             if (drum909 != null) {
-                engine.loadDrumFont(2, -8.2f, drum909);
+                engine.loadDrumFont(2, -12.5f, drum909);
             }
             byte[] drumNatural = readAsset("drums_natural.sf2");
             if (drumNatural != null) {
-                engine.loadDrumFont(3, -9.1f, drumNatural);
+                engine.loadDrumFont(3, -18.4f, drumNatural);
             }
             byte[] drumArdency = readAsset("drums_ardency.sf2");
             if (drumArdency != null) {
-                // Raise the font so its three hats have real amplitude headroom.
-                // Native per-note trim offsets this lift for every non-hat voice.
-                engine.loadDrumFont(4, 1.8f, drumArdency);
+                engine.loadDrumFont(4, -15.4f, drumArdency);
             }
             byte[] drumPhat = readAsset("drums_phat.sf2");
             if (drumPhat != null) {
-                engine.loadDrumFont(5, -5.6f, drumPhat);
+                engine.loadDrumFont(5, -16.2f, drumPhat);
             }
             // slot 6 (drums_tama) is loaded first, up top — see above.
             byte[] drumRock = readAsset("drums_rock.sf2");
             if (drumRock != null) {
-                engine.loadDrumFont(7, -5.0f, drumRock);
+                engine.loadDrumFont(7, -17.1f, drumRock);
             }
             byte[] drumLinn = readAsset("drums_linn.sf2");
             if (drumLinn != null) {
-                engine.loadDrumFont(8, -7.2f, drumLinn);
+                engine.loadDrumFont(8, -11.9f, drumLinn);
             }
             byte[] drumR8 = readAsset("drums_r8.sf2");
             if (drumR8 != null) {
-                engine.loadDrumFont(9, -4.4f, drumR8);
+                engine.loadDrumFont(9, -13.3f, drumR8);
             }
             byte[] drumTechno = readAsset("drums_techno.sf2");
             if (drumTechno != null) {
-                engine.loadDrumFont(10, -8.4f, drumTechno);
+                engine.loadDrumFont(10, -12.5f, drumTechno);
             }
             loadChimeSample();
             loadSwellSamples();
@@ -8348,6 +8349,10 @@ public final class MainActivity extends Activity {
     // Pad Mode played the requested alternate preset. Assigned pieces still use
     // an exact (font slot, sample note).
     private void applyKitModeSounds() {
+        // Keep the selected-kit state current even though Full Kit renders
+        // through the per-piece router. This also invalidates stale native
+        // preset state when MIDI strikes continue during a kit switch.
+        engine.setDrumKit(currentPreset.program);
         engine.setCustomDrum(true);
         engine.setDrumRemap(0);
         clearCustomDrumRouting();
@@ -8426,7 +8431,13 @@ public final class MainActivity extends Activity {
                 // font as soon as it is ready, only if it is still selected.
                 if (loaded && currentMode == InstrumentMode.DRUMS
                         && drumFontSlot(currentPreset.program) == targetSlot) {
-                    engine.setDrumKit(currentPreset.program);
+                    if (onFullPads && drumKitView != null) {
+                        // Default Full Kit pieces encode the selected program.
+                        // Rebuild those routes now that the lazy font exists.
+                        applyDrumKit();
+                    } else {
+                        engine.setDrumKit(currentPreset.program);
+                    }
                 }
             });
         }, "drum-font-" + targetSlot).start();
@@ -9264,41 +9275,41 @@ public final class MainActivity extends Activity {
 
     private static float extraDrumGainDb(int slot) {
         switch (slot) {
-            case 11: return -11.0f;
-            case 12: return -10.5f;
-            case 13: return -10.0f;
-            case 14: return -9.5f;
-            case 15: return -8.5f;
-            case 16: return -7.5f;
-            case 17: return -10.5f;
-            case 18: return -10.0f;
-            case 19: return -10.0f;
-            case 20: return -9.0f;
-            case 21: return -6.0f;    // congas
-            case 22: return -11.0f;   // reggae (hot samples, peak ~2.6)
-            case 23: return -10.0f;   // beatbox / CR-78 machine (peak ~2.2)
-            case 24: return -10.0f;   // jungle
-            case 25: return -10.0f;   // trap
-            case 26: return -10.0f;   // reggaeton
-            case 27: return -10.0f;   // tr-707
-            case 28: return -10.0f;   // tr-606
-            case 29: return -10.0f;   // simmons
-            case 30: return -10.0f;   // electro
-            case 31: return -10.0f;   // djent
-            case 32: return -10.0f;   // dance
-            case 33: return -10.0f;   // slam
-            case 34: return -10.0f;   // snes
-            case 35: return -10.0f;   // funk studio
-            case 36: return -10.0f;   // pop studio
-            case 37: return -10.0f;   // metal studio
-            case 38: return -10.0f;   // jazz club
-            case 39: return -10.0f;   // brush studio
-            case 40: return -2.8f;    // sample lib: kick  (measured peak ~1.04)
-            case 41: return -2.7f;    // sample lib: snare (~1.02)
-            case 42: return -2.5f;    // sample lib: toms  (~1.00)
-            case 43: return -3.1f;    // sample lib: cymbals (~1.07)
-            case 44: return -2.7f;    // sample lib: claps (~1.03)
-            case 45: return -4.1f;    // sample lib: percussion (~1.21)
+            case 11: return -15.4f;   // giant studio
+            case 12: return -16.9f;   // hard rock classic
+            case 13: return -17.3f;   // hard rock v3
+            case 14: return -14.5f;   // melotti studio
+            case 15: return -13.4f;   // real acoustic 5
+            case 16: return -11.5f;   // roland canvas
+            case 17: return -14.4f;   // charlie standard
+            case 18: return -13.8f;   // tama rockstar classic
+            case 19: return -14.4f;   // tama rockstar 2
+            case 20: return -12.4f;   // ultimate cm
+            case 21: return -22.6f;   // congas
+            case 22: return -19.8f;   // reggae
+            case 23: return -12.2f;   // beatbox / cr-78
+            case 24: return -12.9f;   // jungle
+            case 25: return -16.3f;   // trap
+            case 26: return -14.5f;   // reggaeton
+            case 27: return -12.5f;   // tr-707
+            case 28: return -15.8f;   // tr-606
+            case 29: return -18.0f;   // simmons
+            case 30: return -15.0f;   // electro
+            case 31: return -15.8f;   // djent
+            case 32: return -13.3f;   // dance
+            case 33: return -15.7f;   // slam
+            case 34: return -16.5f;   // snes
+            case 35: return -14.7f;   // funk studio
+            case 36: return -13.8f;   // pop studio
+            case 37: return -19.2f;   // metal studio
+            case 38: return -13.5f;   // jazz club
+            case 39: return -15.8f;   // brush studio
+            case 40: return -2.5f;    // sample library: kick
+            case 41: return -2.6f;    // sample library: snare
+            case 42: return -3.3f;    // sample library: toms
+            case 43: return -3.4f;    // sample library: cymbals
+            case 44: return -2.9f;    // sample library: claps
+            case 45: return -3.3f;    // sample library: percussion
             default: return -9.0f;
         }
     }
@@ -10668,6 +10679,40 @@ public final class MainActivity extends Activity {
             if (t < 1f) postInvalidateOnAnimation();
             else if (onFinished != null) { Runnable done = onFinished; onFinished = null; done.run(); }
         }
+    }
+
+    private void dispatchDrumMidi(int note, int velocity, boolean on, int channel0) {
+        int mapped = mapDrumNote(note, channel0);
+        if (mapped < 0) {
+            return;
+        }
+        if (mapped == CHIMES_MIDI_NOTE) {
+            if (on) engine.triggerChimes();
+            setKeyPressed(mapped, on);
+            return;
+        }
+        if (mapped == SWELL_FIRST_MIDI_NOTE) {
+            if (on) engine.triggerSwell(drumSwellVariant);
+            setKeyPressed(mapped, on);
+            return;
+        }
+        if (!on) {
+            // Drum voices are one-shots. Queuing their MIDI note-offs only
+            // doubles traffic during rolls and can displace audible strikes.
+            setKeyPressed(mapped, false);
+            return;
+        }
+        float v = velocity / 127.0f;
+        if (cymChokeVel > 0f && v < cymChokeVel && isChokeCymbal(mapped)) {
+            engine.chokeCymbals();
+            setKeyPressed(mapped, false);
+            return;
+        }
+        int effective = coerceCrash(coerceRide(mapped, v), v);
+        engine.noteOn(effective, v);
+        // Animate the physical instrument that was struck. Sound coercion or a
+        // custom source must not make a snare light a ride/cymbal image.
+        setKeyPressed(mapped, true);
     }
 
     private void goToPicker() {
@@ -16274,13 +16319,16 @@ public final class MainActivity extends Activity {
             int velocity = data2;
             boolean on = command == 0x90 && velocity > 0;
             {
-                if (handlePedalMidi(1000 + note, on)) {
+                boolean drumMidiContext = currentMode == InstrumentMode.DRUMS
+                        || onMidiAssignScreen;
+                if (!drumMidiContext && handlePedalMidi(1000 + note, on)) {
                     return;
                 }
                 if (onMidiAssignScreen) {
                     if (on) {
                         handler.post(() -> onMidiLearn(note, channel0));
                     }
+                    dispatchDrumMidi(note, velocity, on, channel0);
                     return;
                 }
                 if (onLoopMix) {
@@ -16335,36 +16383,7 @@ public final class MainActivity extends Activity {
                     return;
                 }
                 if (currentMode == InstrumentMode.DRUMS) {
-                    int mapped = mapDrumNote(note, channel0);
-                    if (mapped >= 0) {
-                        if (mapped == CHIMES_MIDI_NOTE) {
-                            if (on) engine.triggerChimes();
-                            setKeyPressed(mapped, on);
-                            return;
-                        }
-                        if (mapped == SWELL_FIRST_MIDI_NOTE) {
-                            if (on) engine.triggerSwell(drumSwellVariant);
-                            setKeyPressed(mapped, on);
-                            return;
-                        }
-                        if (on) {
-                            float v = velocity / 127.0f;
-                            if (cymChokeVel > 0f && v < cymChokeVel && isChokeCymbal(mapped)) {
-                                // A very soft cymbal hit = choke (edge touch on
-                                // an e-drum cymbal), not a strike.
-                                engine.chokeCymbals();
-                            } else {
-                                // Velocity cymbals, same rule as the pads: a hard
-                                // ride crashes, a soft crash rides.
-                                int eff = coerceCrash(coerceRide(mapped, v), v);
-                                engine.noteOn(eff, v);
-                                setKeyPressed(eff, on);
-                            }
-                        } else {
-                            engine.noteOff(mapped);
-                            setKeyPressed(mapped, on);
-                        }
-                    }
+                    dispatchDrumMidi(note, velocity, on, channel0);
                     return;
                 }
                 // Piano dual: route Sound 2 here in Java, exactly like the
@@ -19422,6 +19441,39 @@ public final class MainActivity extends Activity {
         void setNoteAvailability(boolean[] a) {
             System.arraycopy(a, 0, noteAvail, 0, 128);
             invalidate();
+        }
+
+        void flashNote(int note) {
+            Piece familyMatch = null;
+            int wantedCategory = inferCategoryForNote(note);
+            for (Piece piece : pieces) {
+                if (piece.note == note) {
+                    piece.flash = 1.0f;
+                    postInvalidateOnAnimation();
+                    return;
+                }
+                int category = piece.cat >= 0 ? piece.cat : inferCategoryForNote(piece.note);
+                if (familyMatch == null && category == wantedCategory) {
+                    familyMatch = piece;
+                }
+            }
+            if (familyMatch != null) {
+                familyMatch.flash = 1.0f;
+                postInvalidateOnAnimation();
+            }
+        }
+
+        private static int inferCategoryForNote(int note) {
+            switch (note) {
+                case 35: case 36: return 0; // kick
+                case 37: case 38: case 39: case 40: return 1; // snare / clap
+                case 41: case 43: return 3; // floor tom
+                case 42: case 44: case 46:
+                case 49: case 51: case 52: case 53:
+                case 55: case 57: case 59: return 4; // hats / cymbals
+                case 84: return CAT_CHIMES;
+                default: return 2; // rack tom / percussion-shaped fallback
+            }
         }
 
         void setEditListener(EditListener l) { this.editListener = l; }

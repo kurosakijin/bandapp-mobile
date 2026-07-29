@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.99` / version code `370`
+- Current version: `1.1.100` / version code `371`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,18 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.100 - Drum MIDI, Full Kit, and Volume Reliability
+
+- All 46 bundled drum SoundFonts use measured per-font gain values and remain
+  protected by the native 0.86 output ceiling.
+- MIDI drums play while Settings and MIDI Assignment are open; learning and
+  audition happen together, pedal bindings cannot consume drum strikes, redundant
+  one-shot note-offs are skipped, and Drum adaptive buffering is capped.
+- Full Kit reapplies inherited piece routes when a lazy selected kit finishes
+  loading, including while MIDI input continues.
+- MIDI hits animate the corresponding physical Full Kit image by mapped instrument
+  identity, independently of the sound assigned to that piece.
 
 ## Release 1.1.99 - Funk Hi-Hat Balance
 
