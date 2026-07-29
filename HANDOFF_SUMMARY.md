@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.97` / version code `368`
+- Current version: `1.1.98` / version code `369`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,14 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.98 - Active Control Glow and Firefly Slide Fix
+
+- Shared active buttons and Piano/Looper toggle pills now use a brighter cyan
+  fill, animated accent border, colored elevation shadow, and subtle scale lift.
+- Looper Chord, Slide, Split, and Dual use the shared active-state styling.
+- Firefly Melody no longer forces portamento in Piano or Looper mode and follows
+  the user's Slide setting like every other preset.
 
 ## Release 1.1.97 - Direct Cabinet IR Switching
 

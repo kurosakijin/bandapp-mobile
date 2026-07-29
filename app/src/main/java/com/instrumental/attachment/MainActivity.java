@@ -2155,8 +2155,10 @@ public final class MainActivity extends Activity {
     }
 
     private void styleTogglePill(TextView pill, boolean on) {
-        pill.setTextColor(contrastTextColor(COLOR_SURFACE_RAISED));
-        pill.setBackground(pillBackground(COLOR_SURFACE_RAISED, on ? COLOR_GREEN : COLOR_BORDER));
+        int fill = on ? Color.rgb(191, 246, 255) : COLOR_SURFACE_RAISED;
+        pill.setTextColor(contrastTextColor(fill));
+        pill.setBackground(pillBackground(fill, on ? Color.rgb(0, 221, 255) : COLOR_BORDER));
+        applyActiveGlow(pill, on);
     }
 
     private void refreshFullPianoSound2Pill() {
@@ -11102,20 +11104,17 @@ public final class MainActivity extends Activity {
         return Math.max(0, Math.min(100, Math.round((200 - rate) / 1.85f)));
     }
 
-    // Firefly Melody is a mono legato portamento lead on the record, so it
-    // keeps slide on. Every other sound, including Stylophone presets, follows
-    // the Slide control exactly.
+    // Every sound follows the Slide control exactly. Presets must never enable
+    // portamento implicitly because that makes detached melody notes bend.
     private void pushPianoGlide() {
-        engine.setPianoGlide(pianoGlideOn || currentPreset == TonePreset.PIANO_FIREFLY);
+        engine.setPianoGlide(pianoGlideOn);
         engine.setPianoGlideMono(pianoGlideOn && pianoGlideMono);
     }
 
-    // Looper keys follow the user's Slide pill, except Firefly Melody. Slide is
-    // off while Chord is on because a chord tap is three simultaneous keys.
+    // Looper keys follow the user's Slide pill. Slide is off while Chord is on
+    // because a chord tap is multiple simultaneous keys.
     private void pushLoopKeysGlide() {
-        engine.setLoopKeysGlide(
-                (loopKeysSlide || loopKeysPreset == TonePreset.PIANO_FIREFLY)
-                        && !loopKeysChord);
+        engine.setLoopKeysGlide(loopKeysSlide && !loopKeysChord);
         engine.setLoopKeysGlideMono(
                 (loopKeysSlide && loopKeysSlideMono) && !loopKeysChord);
     }
@@ -11685,17 +11684,17 @@ public final class MainActivity extends Activity {
         final TextView chordPill = transportPill("Chord");
         final TextView slidePill = transportPill(
                 loopKeysSlide && loopKeysSlideMono ? "Mono" : "Slide");
-        chordPill.setTextColor(loopKeysChord ? COLOR_GREEN : COLOR_MUTED);
+        styleTogglePill(chordPill, loopKeysChord);
         chordPill.setOnClickListener(v -> {
             loopKeysChord = !loopKeysChord;
             prefs.edit().putBoolean("loop_keys_chord", loopKeysChord).apply();
-            chordPill.setTextColor(loopKeysChord ? COLOR_GREEN : COLOR_MUTED);
+            styleTogglePill(chordPill, loopKeysChord);
             if (loopKeysView != null) loopKeysView.setChord(loopKeysChord);
             pushLoopKeysGlide();
         });
         // Slide on the looper keys, same legato bend as the piano's Slide chip.
         // Tap cycles Off → Slide → Mono (detached presses cut the last voice).
-        slidePill.setTextColor(loopKeysSlide ? COLOR_GREEN : COLOR_MUTED);
+        styleTogglePill(slidePill, loopKeysSlide);
         slidePill.setOnClickListener(v -> {
             if (!loopKeysSlide) {
                 loopKeysSlide = true;
@@ -11711,7 +11710,7 @@ public final class MainActivity extends Activity {
             prefs.edit().putBoolean("loop_keys_slide", loopKeysSlide)
                     .putBoolean("loop_keys_slide_mono", loopKeysSlideMono).apply();
             slidePill.setText(loopKeysSlide && loopKeysSlideMono ? "Mono" : "Slide");
-            slidePill.setTextColor(loopKeysSlide ? COLOR_GREEN : COLOR_MUTED);
+            styleTogglePill(slidePill, loopKeysSlide);
             engine.allNotesOff();
             pushLoopKeysGlide();
             if (loopKeysSlide && loopKeysChord) {
@@ -11720,11 +11719,11 @@ public final class MainActivity extends Activity {
             }
         });
         final TextView splitPill = transportPill("Split");
-        splitPill.setTextColor(loopKeysSplit ? COLOR_GREEN : COLOR_MUTED);
+        styleTogglePill(splitPill, loopKeysSplit);
         splitPill.setOnClickListener(v -> {
             loopKeysSplit = !loopKeysSplit;
             prefs.edit().putBoolean("loop_keys_split", loopKeysSplit).apply();
-            splitPill.setTextColor(loopKeysSplit ? COLOR_GREEN : COLOR_MUTED);
+            styleTogglePill(splitPill, loopKeysSplit);
             if (loopKeysView != null) loopKeysView.setSplit(loopKeysSplit);
             if (loopKeysMelodyNav != null) {
                 loopKeysMelodyNav.setVisibility(loopKeysSplit ? View.VISIBLE : View.GONE);
@@ -13041,7 +13040,7 @@ public final class MainActivity extends Activity {
         boolean available = loopKeysSplit;
         dualKeysPill.setEnabled(available);
         dualKeysPill.setAlpha(available ? 1.0f : 0.42f);
-        dualKeysPill.setTextColor(available && loopDualOn ? COLOR_GREEN : COLOR_MUTED);
+        styleTogglePill(dualKeysPill, available && loopDualOn);
     }
 
     private View dualSelectedRow;
@@ -16653,10 +16652,23 @@ public final class MainActivity extends Activity {
     }
 
     private void styleChipButton(Button button, boolean selected) {
-        int fill = selected ? COLOR_TEAL : COLOR_SURFACE_RAISED;
+        int fill = selected ? Color.rgb(117, 225, 246) : COLOR_SURFACE_RAISED;
         button.setBackground(animatedButtonBackground(
-                fill, dp(999), selected ? COLOR_GREEN : COLOR_TEAL));
+                fill, dp(999), selected ? Color.rgb(0, 235, 255) : COLOR_TEAL));
         button.setTextColor(contrastTextColor(fill));
+        applyActiveGlow(button, selected);
+    }
+
+    private void applyActiveGlow(View view, boolean active) {
+        view.setScaleX(active ? 1.025f : 1f);
+        view.setScaleY(active ? 1.025f : 1f);
+        view.setElevation(active ? dp(8) : dp(1));
+        view.setTranslationZ(active ? dp(4) : 0f);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            int shadow = active ? Color.rgb(0, 190, 255) : Color.TRANSPARENT;
+            view.setOutlineAmbientShadowColor(shadow);
+            view.setOutlineSpotShadowColor(shadow);
+        }
     }
 
     private void stylePrimaryButton(Button button, boolean running) {

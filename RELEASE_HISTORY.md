@@ -1,5 +1,14 @@
 # Release History
 
+## 1.1.98 (version code 369) - 2026-07-29
+
+- Added a bright cyan fill, animated border, colored glow, elevation, and subtle
+  scale lift to active shared buttons and Piano/Looper toggle pills.
+- Updated Looper Chord, Slide, Split, and Dual controls to clearly show their
+  active state using the same shared treatment.
+- Removed Firefly Melody's forced portamento in Piano and Looper modes; Firefly
+  now slides only when the user explicitly enables Slide.
+
 ## 1.1.97 (version code 368) - 2026-07-29
 
 - Fixed Guitar Cabinet IR selection changing its label while the previous
