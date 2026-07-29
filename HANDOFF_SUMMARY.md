@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.98` / version code `369`
+- Current version: `1.1.99` / version code `370`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,12 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.99 - Funk Hi-Hat Balance
+
+- Funk closed, pedal, and open hats receive a real 4 dB font-level lift.
+- Non-hat Funk notes receive the inverse trim, retaining the previous balance
+  for the rest of the kit across Pad Mode and Full Kit routing.
 
 ## Release 1.1.98 - Active Control Glow and Firefly Slide Fix
 

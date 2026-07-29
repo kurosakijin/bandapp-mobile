@@ -5266,7 +5266,14 @@ private:
         if (slot < 0 || slot >= 12 || note < kTrimLoNote || note > kTrimHiNote) {
             return 1.0f;
         }
-        return kKitNoteTrim[slot][note - kTrimLoNote];
+        float trim = kKitNoteTrim[slot][note - kTrimLoNote];
+        // Funk's closed, pedal, and open hats remain quiet even at maximum MIDI
+        // velocity. Its font is loaded 4 dB hotter so those samples can cut;
+        // offset that lift everywhere else to preserve the balanced kit mix.
+        if (slot == 4 && note != 42 && note != 44 && note != 46) {
+            trim *= 0.631f; // -4 dB
+        }
+        return trim;
     }
 
     // Cymbals sit low on GM kits — lift them so they cut through. The three

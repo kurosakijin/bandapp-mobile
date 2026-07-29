@@ -7912,7 +7912,9 @@ public final class MainActivity extends Activity {
             }
             byte[] drumArdency = readAsset("drums_ardency.sf2");
             if (drumArdency != null) {
-                engine.loadDrumFont(4, -2.2f, drumArdency);   // Funk sat ~2.5 dB low
+                // Raise the font so its three hats have real amplitude headroom.
+                // Native per-note trim offsets this lift for every non-hat voice.
+                engine.loadDrumFont(4, 1.8f, drumArdency);
             }
             byte[] drumPhat = readAsset("drums_phat.sf2");
             if (drumPhat != null) {

@@ -1,5 +1,12 @@
 # Release History
 
+## 1.1.99 (version code 370) - 2026-07-29
+
+- Raised the Funk kit's closed, pedal, and open hi-hats by 4 dB so all three
+  articulations remain audible beside the rest of the kit.
+- Applied an inverse per-note trim to every non-hat Funk voice, preserving the
+  existing kick, snare, tom, and cymbal balance in Pad and Full Kit modes.
+
 ## 1.1.98 (version code 369) - 2026-07-29
 
 - Added a bright cyan fill, animated border, colored glow, elevation, and subtle
