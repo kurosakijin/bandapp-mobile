@@ -1,5 +1,12 @@
 # Release History
 
+## 1.1.101 (version code 372) - 2026-07-29
+
+- Fixed MIDI Tom 1 being silent in Full Kit by resolving its conventional MIDI
+  note 50 to Full Kit's stable Tom 1 routing trigger, note 48.
+- Full Kit MIDI audio and strike animation now use the same resolved physical
+  piece while preserving that piece's default or customized sound source.
+
 ## 1.1.100 (version code 371) - 2026-07-29
 
 - Measured and normalized all 46 bundled drum SoundFonts against consistent

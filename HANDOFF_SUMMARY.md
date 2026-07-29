@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.100` / version code `371`
+- Current version: `1.1.101` / version code `372`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,13 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.101 - Full Kit MIDI Tom 1
+
+- MIDI Tom 1 note 50 resolves to Full Kit's Tom 1 trigger note 48 before entering
+  the native per-piece routing table.
+- The resolved piece drives both audio and image animation and retains its chosen
+  default or custom sound.
 
 ## Release 1.1.100 - Drum MIDI, Full Kit, and Volume Reliability
 

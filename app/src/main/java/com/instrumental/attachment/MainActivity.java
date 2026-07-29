@@ -10696,23 +10696,25 @@ public final class MainActivity extends Activity {
             setKeyPressed(mapped, on);
             return;
         }
+        int trigger = onFullPads && drumKitView != null
+                ? drumKitView.resolveMidiTrigger(mapped) : mapped;
         if (!on) {
             // Drum voices are one-shots. Queuing their MIDI note-offs only
             // doubles traffic during rolls and can displace audible strikes.
-            setKeyPressed(mapped, false);
+            setKeyPressed(trigger, false);
             return;
         }
         float v = velocity / 127.0f;
-        if (cymChokeVel > 0f && v < cymChokeVel && isChokeCymbal(mapped)) {
+        if (cymChokeVel > 0f && v < cymChokeVel && isChokeCymbal(trigger)) {
             engine.chokeCymbals();
-            setKeyPressed(mapped, false);
+            setKeyPressed(trigger, false);
             return;
         }
-        int effective = coerceCrash(coerceRide(mapped, v), v);
+        int effective = coerceCrash(coerceRide(trigger, v), v);
         engine.noteOn(effective, v);
         // Animate the physical instrument that was struck. Sound coercion or a
         // custom source must not make a snare light a ride/cymbal image.
-        setKeyPressed(mapped, true);
+        setKeyPressed(trigger, true);
     }
 
     private void goToPicker() {
@@ -19461,6 +19463,28 @@ public final class MainActivity extends Activity {
                 familyMatch.flash = 1.0f;
                 postInvalidateOnAnimation();
             }
+        }
+
+        int resolveMidiTrigger(int midiNote) {
+            // MIDI Assignment follows the conventional high-tom note 50 while
+            // Full Kit's visible Tom 1 uses note 48 as its stable routing key.
+            // Resolve by physical instrument before entering the native custom
+            // table so the selected sound source remains independent.
+            if (midiNote == 50) {
+                for (Piece piece : pieces) {
+                    if (piece.note == 48) return 48;
+                }
+            }
+            for (Piece piece : pieces) {
+                if (piece.note == midiNote) return midiNote;
+            }
+            int category = inferCategoryForNote(midiNote);
+            for (Piece piece : pieces) {
+                int pieceCategory = piece.cat >= 0
+                        ? piece.cat : inferCategoryForNote(piece.note);
+                if (pieceCategory == category) return piece.note;
+            }
+            return midiNote;
         }
 
         private static int inferCategoryForNote(int note) {
