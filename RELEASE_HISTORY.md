@@ -1,5 +1,14 @@
 # Release History
 
+## 1.1.102 (version code 373) - 2026-07-29
+
+- Fixed silent and near-silent drum kits caused by over-attenuating complete
+  fonts against an unrealistic stacked-hit measurement.
+- Rebalanced every bundled complete kit around a measured 0.75 loudest single-hit
+  target while retaining the separately measured sample-library gains.
+- Replaced the final hard clamp with a fixed, stateless 0.86 soft ceiling so
+  simultaneous hits stay below red without automatic gain pumping.
+
 ## 1.1.101 (version code 372) - 2026-07-29
 
 - Fixed MIDI Tom 1 being silent in Full Kit by resolving its conventional MIDI

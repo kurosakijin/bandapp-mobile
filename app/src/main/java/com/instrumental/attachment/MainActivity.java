@@ -7886,7 +7886,7 @@ public final class MainActivity extends Activity {
             // once it finishes — the "sudden change of sound at first run".
             byte[] drumDefault = readAsset("drums_tama.sf2");
             if (drumDefault != null) {
-                engine.loadDrumFont(6, -13.8f, drumDefault);
+                engine.loadDrumFont(6, -7.8f, drumDefault);
             }
             // Gains measured on host (worst-case chord, target peak 0.70).
             loadHqAsset(0, 0, -8.6f, "grand.sf2");
@@ -7899,44 +7899,44 @@ public final class MainActivity extends Activity {
             // Piano library (slot 4) is lazy-loaded on selection — see loadLibraryPiano().
             byte[] drumHq = readAsset("drums_acoustic.sf2");
             if (drumHq != null) {
-                engine.loadDrumFont(0, -19.0f, drumHq);
+                engine.loadDrumFont(0, -6.1f, drumHq);
             }
             byte[] drum808 = readAsset("drums_808.sf2");
             if (drum808 != null) {
-                engine.loadDrumFont(1, -13.6f, drum808);
+                engine.loadDrumFont(1, -0.6f, drum808);
             }
             byte[] drum909 = readAsset("drums_909.sf2");
             if (drum909 != null) {
-                engine.loadDrumFont(2, -12.5f, drum909);
+                engine.loadDrumFont(2, -2.7f, drum909);
             }
             byte[] drumNatural = readAsset("drums_natural.sf2");
             if (drumNatural != null) {
-                engine.loadDrumFont(3, -18.4f, drumNatural);
+                engine.loadDrumFont(3, -9.9f, drumNatural);
             }
             byte[] drumArdency = readAsset("drums_ardency.sf2");
             if (drumArdency != null) {
-                engine.loadDrumFont(4, -15.4f, drumArdency);
+                engine.loadDrumFont(4, -6.3f, drumArdency);
             }
             byte[] drumPhat = readAsset("drums_phat.sf2");
             if (drumPhat != null) {
-                engine.loadDrumFont(5, -16.2f, drumPhat);
+                engine.loadDrumFont(5, -1.5f, drumPhat);
             }
             // slot 6 (drums_tama) is loaded first, up top — see above.
             byte[] drumRock = readAsset("drums_rock.sf2");
             if (drumRock != null) {
-                engine.loadDrumFont(7, -17.1f, drumRock);
+                engine.loadDrumFont(7, -6.6f, drumRock);
             }
             byte[] drumLinn = readAsset("drums_linn.sf2");
             if (drumLinn != null) {
-                engine.loadDrumFont(8, -11.9f, drumLinn);
+                engine.loadDrumFont(8, -4.7f, drumLinn);
             }
             byte[] drumR8 = readAsset("drums_r8.sf2");
             if (drumR8 != null) {
-                engine.loadDrumFont(9, -13.3f, drumR8);
+                engine.loadDrumFont(9, -2.7f, drumR8);
             }
             byte[] drumTechno = readAsset("drums_techno.sf2");
             if (drumTechno != null) {
-                engine.loadDrumFont(10, -12.5f, drumTechno);
+                engine.loadDrumFont(10, -3.1f, drumTechno);
             }
             loadChimeSample();
             loadSwellSamples();
@@ -9275,35 +9275,35 @@ public final class MainActivity extends Activity {
 
     private static float extraDrumGainDb(int slot) {
         switch (slot) {
-            case 11: return -15.4f;   // giant studio
-            case 12: return -16.9f;   // hard rock classic
-            case 13: return -17.3f;   // hard rock v3
-            case 14: return -14.5f;   // melotti studio
-            case 15: return -13.4f;   // real acoustic 5
-            case 16: return -11.5f;   // roland canvas
-            case 17: return -14.4f;   // charlie standard
-            case 18: return -13.8f;   // tama rockstar classic
-            case 19: return -14.4f;   // tama rockstar 2
-            case 20: return -12.4f;   // ultimate cm
-            case 21: return -22.6f;   // congas
-            case 22: return -19.8f;   // reggae
-            case 23: return -12.2f;   // beatbox / cr-78
-            case 24: return -12.9f;   // jungle
-            case 25: return -16.3f;   // trap
-            case 26: return -14.5f;   // reggaeton
-            case 27: return -12.5f;   // tr-707
-            case 28: return -15.8f;   // tr-606
-            case 29: return -18.0f;   // simmons
-            case 30: return -15.0f;   // electro
-            case 31: return -15.8f;   // djent
-            case 32: return -13.3f;   // dance
-            case 33: return -15.7f;   // slam
-            case 34: return -16.5f;   // snes
-            case 35: return -14.7f;   // funk studio
-            case 36: return -13.8f;   // pop studio
-            case 37: return -19.2f;   // metal studio
-            case 38: return -13.5f;   // jazz club
-            case 39: return -15.8f;   // brush studio
+            case 11: return -7.9f;    // giant studio
+            case 12: return -7.2f;    // hard rock classic
+            case 13: return -7.9f;    // hard rock v3
+            case 14: return -7.5f;    // melotti studio
+            case 15: return -7.6f;    // real acoustic 5
+            case 16: return -3.8f;    // roland canvas
+            case 17: return -8.2f;    // charlie standard
+            case 18: return -7.8f;    // tama rockstar classic
+            case 19: return -7.6f;    // tama rockstar 2
+            case 20: return -3.9f;    // ultimate cm
+            case 21: return -7.9f;    // congas
+            case 22: return -8.4f;    // reggae
+            case 23: return -10.8f;   // beatbox / cr-78
+            case 24: return -8.9f;    // jungle
+            case 25: return -8.6f;    // trap
+            case 26: return -9.4f;    // reggaeton
+            case 27: return -7.5f;    // tr-707
+            case 28: return -7.7f;    // tr-606
+            case 29: return -7.3f;    // simmons
+            case 30: return -8.6f;    // electro
+            case 31: return -8.8f;    // djent
+            case 32: return -8.1f;    // dance
+            case 33: return -9.9f;    // slam
+            case 34: return -8.4f;    // snes
+            case 35: return -9.3f;    // funk studio
+            case 36: return -7.3f;    // pop studio
+            case 37: return -9.1f;    // metal studio
+            case 38: return -8.5f;    // jazz club
+            case 39: return -9.7f;    // brush studio
             case 40: return -2.5f;    // sample library: kick
             case 41: return -2.6f;    // sample library: snare
             case 42: return -3.3f;    // sample library: toms

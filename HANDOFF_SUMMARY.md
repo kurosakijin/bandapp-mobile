@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.101` / version code `372`
+- Current version: `1.1.102` / version code `373`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,13 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.102 - Audible Drum Kit Normalization
+
+- Complete drum kits use measured per-font gains targeting a 0.75 loudest
+  single hit instead of the overly quiet stacked-hit target.
+- The output uses a fixed 0.86 soft ceiling, preventing red-zone peaks and hard
+  clipping without automatic gain reduction or lowering later strikes.
 
 ## Release 1.1.101 - Full Kit MIDI Tom 1
 

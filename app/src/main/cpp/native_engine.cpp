@@ -3943,8 +3943,11 @@ private:
                 l = m;
                 r = m;
             }
-            l = clampFloat(l * kOutputTrim, -kOutputCeiling, kOutputCeiling);
-            r = clampFloat(r * kOutputTrim, -kOutputCeiling, kOutputCeiling);
+            // Fixed, stateless soft ceiling: loud simultaneous hits stay below
+            // red without the harsh flattening of a hard clamp or any automatic
+            // gain pumping that would turn following hits down.
+            l = softClip(l * kOutputTrim / kOutputCeiling) * kOutputCeiling;
+            r = softClip(r * kOutputTrim / kOutputCeiling) * kOutputCeiling;
             out[f * 2] = l;
             out[f * 2 + 1] = r;
             sumSquares += l * l + r * r;
