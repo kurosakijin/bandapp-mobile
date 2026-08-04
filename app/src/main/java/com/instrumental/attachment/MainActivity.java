@@ -576,6 +576,7 @@ public final class MainActivity extends Activity {
     // MIDI pad sync (MPK-style controllers): the hardware note bound to each app
     // pad, -1 = unbound. sessionSyncArm is the pad waiting to learn a note.
     private final int[] sessionPadMidi = new int[SESSION_DRUM_PADS];
+    private final int[] sessionPadMidiCh = new int[SESSION_DRUM_PADS];
     private int sessionSyncArm = -1;
     private TextView sessionSyncPill;
     private int sessionKey;   // 0 = C; transposes every chord pad together
@@ -3720,6 +3721,7 @@ public final class MainActivity extends Activity {
         sessionKey = prefs.getInt("sess_key", 0);
         for (int i = 0; i < SESSION_DRUM_PADS; i++) {
             sessionPadMidi[i] = prefs.getInt("sess_pad_midi" + i, -1);
+            sessionPadMidiCh[i] = prefs.getInt("sess_pad_midich" + i, -1);
         }
 
         LinearLayout screen = new LinearLayout(this);
@@ -4145,20 +4147,30 @@ public final class MainActivity extends Activity {
         return g;
     }
 
-    private int sessionPadForMidi(int note) {
-        for (int i = 0; i < SESSION_DRUM_PADS; i++) if (sessionPadMidi[i] == note) return i;
+    // Match on note AND channel. Most pad controllers send their pads on their
+    // own channel (commonly 10) while the keys use another, so storing both lets
+    // a pad and a key share a note number without stealing each other's hits.
+    private int sessionPadForMidi(int note, int channel) {
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) {
+            if (sessionPadMidi[i] == note
+                    && (sessionPadMidiCh[i] < 0 || sessionPadMidiCh[i] == channel)) return i;
+        }
         return -1;
     }
 
     // Learn: bind the struck hardware note to the pad being synced, then move on
     // to the next pad so a whole controller can be mapped in one pass.
-    private void bindSessionPadMidi(int note) {
+    private void bindSessionPadMidi(int note, int channel) {
         if (sessionSyncArm < 0 || sessionSyncArm >= SESSION_DRUM_PADS) return;
         for (int i = 0; i < SESSION_DRUM_PADS; i++) {
-            if (sessionPadMidi[i] == note) sessionPadMidi[i] = -1;   // one note, one pad
+            if (sessionPadMidi[i] == note && sessionPadMidiCh[i] == channel) {
+                sessionPadMidi[i] = -1;   // one note+channel, one pad
+            }
         }
         sessionPadMidi[sessionSyncArm] = note;
-        prefs.edit().putInt("sess_pad_midi" + sessionSyncArm, note).apply();
+        sessionPadMidiCh[sessionSyncArm] = channel;
+        prefs.edit().putInt("sess_pad_midi" + sessionSyncArm, note)
+                .putInt("sess_pad_midich" + sessionSyncArm, channel).apply();
         flashSessionPad(sessionSyncArm);
         sessionSyncArm++;
         if (sessionSyncArm >= SESSION_DRUM_PADS) {
@@ -17381,10 +17393,11 @@ public final class MainActivity extends Activity {
                 if (onSession) {
                     if (on && sessionSyncArm >= 0) {
                         final int bound = note;
-                        handler.post(() -> bindSessionPadMidi(bound));
+                        final int boundCh = channel0;
+                        handler.post(() -> bindSessionPadMidi(bound, boundCh));
                         return;
                     }
-                    int padIdx = sessionPadForMidi(note);
+                    int padIdx = sessionPadForMidi(note, channel0);
                     if (padIdx >= 0) {
                         if (on) handler.post(() -> flashSessionPad(padIdx));
                         return;

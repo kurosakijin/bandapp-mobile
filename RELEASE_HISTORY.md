@@ -1,5 +1,11 @@
 # Release History
 
+## 1.1.109 (version code 380) - 2026-08-04
+- Session pad sync now records the MIDI channel alongside the note, so a
+  controller whose pads and keys share note numbers on different channels no
+  longer has its keys swallowed by a pad binding.
+- Bindings made before this update keep working and match on any channel.
+
 ## 1.1.108 (version code 379) - 2026-08-04
 - Gave Session its own dark stage surface: a solid deep-violet ground with purple
   chord and drum panels and a blue drum-volume panel, matching the reference
