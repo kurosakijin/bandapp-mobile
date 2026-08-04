@@ -1,5 +1,15 @@
 # Release History
 
+## 1.1.106 (version code 377) - 2026-08-04
+- Fixed Session drum pads playing piano notes instead of drums. Session now runs
+  the loop-mix engine, where pad hits strike the drum kit and chords play through
+  the keys sound, so both sound correctly at once.
+- Rebuilt the Session layout to match the reference: a 3x4 chord pad grid with Key
+  and Chord Kit selectors above it and an active-pad readout below.
+- Drum pads and their volume faders are both four across, under a centered header
+  naming the struck pad and the current drum kit.
+- Added a Key selector that transposes every chord pad together.
+
 ## 1.1.105 (version code 376) - 2026-08-04
 - Added a Session card to the landing page features row so the pad workspace is
   reachable without first opening an instrument.

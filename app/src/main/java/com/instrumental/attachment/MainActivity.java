@@ -528,12 +528,16 @@ public final class MainActivity extends Activity {
     // ---- Session: live/recorded pad workspace (chord pads + drum pads) ----
     // Left = chord pads driving a background loop, right = 8 drum pads with
     // their own volumes. Keys are played from a MIDI keyboard only.
+    private static final int SESSION_CHORD_COLS = 3;    // chord grid is 3 wide
+    private static final int SESSION_CHORD_PADS = 12;   // ...and 4 tall
     private static final int SESSION_DRUM_PADS = 8;
+    private static final int SESSION_DRUM_COLS = 4;     // drum pads and their faders are 4 wide
     private static final String[] SESSION_DRUM_NAMES =
             {"Kick", "Clap", "Hihat", "Snare", "Tom", "SFX Rise", "Crash", "Roll Kick"};
     private static final int[] SESSION_DRUM_NOTES = {36, 39, 42, 38, 45, 55, 49, 35};
     private boolean onSession;
     private boolean sessionFromLanding;   // entered from the landing card, not the ⋮ menu
+    private boolean sessionEngineReady;   // engine is running in loop-mix mode for Session
     private final float[] sessionDrumVol = new float[SESSION_DRUM_PADS];
     private int sessionChordMode;      // 0 = latch/sustain, 1 = looping pattern
     private int sessionActiveChord = -1;   // chord pad currently sounding (-1 = none)
@@ -543,6 +547,8 @@ public final class MainActivity extends Activity {
     private int sessionLoopStep;
     private TextView[] sessionChordPads;
     private TextView sessionModePill, sessionLoopPill, sessionRecPill;
+    private TextView sessionPadReadout, sessionPadTitle;
+    private int sessionKey;   // 0 = C; transposes every chord pad together
     // Event-pattern loop: records pad/chord hits and replays them in sync.
     private static final int SESSION_LOOP_BARS = 2;
     private final java.util.ArrayList<int[]> sessionEvents = new java.util.ArrayList<>();
@@ -3673,7 +3679,7 @@ public final class MainActivity extends Activity {
     private void showSession() {
         onSession = true;
         onFullPiano = false;
-        ensurePianoEngine();
+        ensureSessionEngine();
         for (int i = 0; i < SESSION_DRUM_PADS; i++) {
             if (sessionDrumVol[i] <= 0f) {
                 sessionDrumVol[i] = prefs.getFloat("sess_dvol" + i, 0.8f);
@@ -3681,6 +3687,7 @@ public final class MainActivity extends Activity {
         }
         sessionBpm = prefs.getInt("sess_bpm", metronomeBpm > 0 ? metronomeBpm : 100);
         sessionChordMode = prefs.getInt("sess_chord_mode", 0);
+        sessionKey = prefs.getInt("sess_key", 0);
 
         LinearLayout screen = new LinearLayout(this);
         screen.setOrientation(LinearLayout.VERTICAL);
@@ -3690,10 +3697,21 @@ public final class MainActivity extends Activity {
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.HORIZONTAL);
 
-        // --- LEFT: chord pads (background loop) ---
+        // --- LEFT: Key / Chord Kit selectors, the 3x4 chord grid, pad readout ---
         LinearLayout chords = stagePanel("CHORDS · BACKGROUND LOOP", COLOR_PURPLE);
-        chords.addView(buildSessionChordGrid(), new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        chords.addView(sessionFieldRow("Key", sessionKeyLabel(),
+                v -> sessionKeyDialog()), matchWrap());
+        chords.addView(sessionFieldRow("Chord Kit", loopKeysPreset.label,
+                v -> loopKeysSoundDialog()), topMargin(matchWrap(), 6));
+        chords.addView(buildSessionChordGrid(), topMargin(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), 8));
+        sessionPadReadout = new TextView(this);
+        sessionPadReadout.setTextColor(COLOR_MUTED);
+        sessionPadReadout.setTextSize(11);
+        sessionPadReadout.setSingleLine(true);
+        sessionPadReadout.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        sessionPadReadout.setText("Pad — none");
+        chords.addView(sessionPadReadout, topMargin(matchWrap(), 8));
         LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.MATCH_PARENT, 3.6f);
         body.addView(chords, cLp);
@@ -3701,11 +3719,29 @@ public final class MainActivity extends Activity {
         // --- RIGHT: drum pads over their volume faders ---
         LinearLayout right = new LinearLayout(this);
         right.setOrientation(LinearLayout.VERTICAL);
+        // Centered header naming the active pad and the drum kit, as on the
+        // reference layout.
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.VERTICAL);
+        head.setGravity(Gravity.CENTER_HORIZONTAL);
+        sessionPadTitle = new TextView(this);
+        sessionPadTitle.setText("Pad 1");
+        sessionPadTitle.setTextColor(COLOR_TEXT);
+        sessionPadTitle.setTextSize(15);
+        sessionPadTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        head.addView(sessionPadTitle, matchWrap());
+        TextView kitName = new TextView(this);
+        kitName.setText(loopKitLabel());
+        kitName.setTextColor(COLOR_MUTED);
+        kitName.setTextSize(11);
+        head.addView(kitName, topMargin(matchWrap(), 2));
+        right.addView(head, matchWrap());
+
         LinearLayout pads = stagePanel("DRUM PADS", COLOR_AMBER);
         pads.addView(buildSessionDrumGrid(), new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-        right.addView(pads, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.35f));
+        right.addView(pads, topMargin(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.35f), 6));
         LinearLayout vols = stagePanel("DRUM PAD VOLUME", COLOR_AMBER);
         vols.addView(buildSessionDrumVolumes(), matchWrap());
         right.addView(vols, topMargin(new LinearLayout.LayoutParams(
@@ -3720,6 +3756,24 @@ public final class MainActivity extends Activity {
         enablePadInsets(screen, screen);
         paintStage(screen);
         setContentView(screen);
+    }
+
+    // Session needs drums AND melodic keys at once, which is exactly what the
+    // loop-mix engine provides: noteOn() strikes the drum kit while loopKeyOn()
+    // plays the keys sound. The piano engine cannot do both, so if the engine is
+    // running in another mode it is restarted here.
+    private void ensureSessionEngine() {
+        if (engine.isRunning() && sessionEngineReady) return;
+        engine.stop();
+        engine.setCustomDrum(false);
+        engine.setDrumKit(loopKitProgram != -1 ? loopKitProgram
+                : TonePreset.defaultFor(InstrumentMode.DRUMS).program);
+        engine.setDrumRemap(loopKitRemap);
+        pushCymbalGains();
+        applyLoopKeysSound();
+        engine.setLoopInstDevice(resolveInstInput());
+        engine.startLoopMix(resolvePreferredInput(-1), resolvePreferredOutput(-1));
+        sessionEngineReady = true;
     }
 
     private View buildSessionBar() {
@@ -3785,13 +3839,109 @@ public final class MainActivity extends Activity {
 
     // Chord pads: tap to play, long-press to change the chord. The grid uses the
     // same chord slots as Chord Mode, so songs/presets stay shared.
+    // "Key   [ C ]" — a small label with a tappable value box beside it.
+    private View sessionFieldRow(String label, String value, View.OnClickListener onTap) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView lbl = new TextView(this);
+        lbl.setText(label);
+        lbl.setTextColor(COLOR_MUTED);
+        lbl.setTextSize(11);
+        row.addView(lbl, new LinearLayout.LayoutParams(dp(62),
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+        TextView box = new TextView(this);
+        box.setText(value);
+        box.setTextColor(COLOR_TEXT);
+        box.setTextSize(12);
+        box.setSingleLine(true);
+        box.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        box.setPadding(dp(8), dp(5), dp(8), dp(5));
+        box.setBackground(moduleBackground(COLOR_SURFACE_RAISED, COLOR_BORDER, COLOR_PURPLE, true));
+        box.setClickable(true);
+        box.setOnClickListener(onTap);
+        row.addView(box, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        return row;
+    }
+
+    // Display name of the kit the Session drum pads are striking.
+    private String loopKitLabel() {
+        int prog = loopKitProgram != -1 ? loopKitProgram
+                : TonePreset.defaultFor(InstrumentMode.DRUMS).program;
+        for (TonePreset p : TonePreset.forMode(InstrumentMode.DRUMS)) {
+            if (p.program == prog) return p.label;
+        }
+        return "Drum Kit";
+    }
+
+    private String sessionKeyLabel() {
+        return ROOT_NAMES[((sessionKey % 12) + 12) % 12];
+    }
+
+    // Transpose every chord pad into a new key, keeping their relative degrees.
+    private void sessionKeyDialog() {
+        final Dialog dialog = new Dialog(this);
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(dialogSheet());
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(16), dp(16), dp(14));
+        TextView title = new TextView(this);
+        title.setText("Key");
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(18);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        content.addView(title, matchWrap());
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.HORIZONTAL);
+        for (int k = 0; k < 12; k++) {
+            final int key = k;
+            if (k % 6 == 0) {
+                grid = new LinearLayout(this);
+                grid.setOrientation(LinearLayout.HORIZONTAL);
+                content.addView(grid, topMargin(matchWrap(), 8));
+            }
+            TextView t = new TextView(this);
+            t.setText(ROOT_NAMES[k]);
+            t.setTextColor(k == sessionKey ? COLOR_TEXT : COLOR_MUTED);
+            t.setTextSize(14);
+            t.setGravity(Gravity.CENTER);
+            t.setPadding(dp(6), dp(10), dp(6), dp(10));
+            t.setBackground(moduleBackground(k == sessionKey ? darken(COLOR_PURPLE) : COLOR_SURFACE_RAISED,
+                    k == sessionKey ? COLOR_PURPLE : COLOR_BORDER, COLOR_PURPLE, true));
+            t.setClickable(true);
+            t.setOnClickListener(v -> {
+                int delta = key - sessionKey;
+                for (int i = 0; i < SESSION_CHORD_PADS; i++) {
+                    chordRoot[i] = ((chordRoot[i] + delta) % 12 + 12) % 12;
+                    if (chordBass[i] >= 0) chordBass[i] = ((chordBass[i] + delta) % 12 + 12) % 12;
+                }
+                sessionKey = key;
+                prefs.edit().putInt("sess_key", sessionKey).apply();
+                saveChordSlots();
+                dialog.dismiss();
+                showSession();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            lp.leftMargin = (k % 6 == 0) ? 0 : dp(6);
+            grid.addView(t, lp);
+        }
+        dialog.setContentView(content);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(dialogWidth(0.8f, 420),
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
+    }
+
     private View buildSessionChordGrid() {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        sessionChordPads = new TextView[chordSlotCount];
-        int perRow = 2;
+        sessionChordPads = new TextView[SESSION_CHORD_PADS];
+        int perRow = SESSION_CHORD_COLS;
         LinearLayout row = null;
-        for (int i = 0; i < chordSlotCount; i++) {
+        for (int i = 0; i < SESSION_CHORD_PADS; i++) {
             if (i % perRow == 0) {
                 row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
@@ -3802,7 +3952,7 @@ public final class MainActivity extends Activity {
             TextView pad = new TextView(this);
             pad.setText(chordName(chordRoot[i], chordType[i], chordBass[i]));
             pad.setTextColor(COLOR_TEXT);
-            pad.setTextSize(15);
+            pad.setTextSize(13);
             pad.setGravity(Gravity.CENTER);
             pad.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             pad.setBackground(moduleBackground(COLOR_SURFACE_RAISED, COLOR_BORDER, COLOR_PURPLE, true));
@@ -3823,7 +3973,7 @@ public final class MainActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         LinearLayout row = null;
         for (int i = 0; i < SESSION_DRUM_PADS; i++) {
-            if (i % 4 == 0) {
+            if (i % SESSION_DRUM_COLS == 0) {
                 row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 col.addView(row, topMargin(new LinearLayout.LayoutParams(
@@ -3841,7 +3991,7 @@ public final class MainActivity extends Activity {
             pad.setOnClickListener(v -> hitSessionDrum(idx, true));
             LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.MATCH_PARENT, 1f);
-            plp.leftMargin = (i % 4 == 0) ? 0 : dp(6);
+            plp.leftMargin = (i % SESSION_DRUM_COLS == 0) ? 0 : dp(6);
             row.addView(pad, plp);
         }
         return col;
@@ -3853,10 +4003,10 @@ public final class MainActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         LinearLayout row = null;
         for (int i = 0; i < SESSION_DRUM_PADS; i++) {
-            if (i % 2 == 0) {
+            if (i % SESSION_DRUM_COLS == 0) {
                 row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
-                col.addView(row, topMargin(matchWrap(), i == 0 ? 0 : 4));
+                col.addView(row, topMargin(matchWrap(), i == 0 ? 0 : 8));
             }
             final int idx = i;
             LinearLayout cell = new LinearLayout(this);
@@ -3884,7 +4034,7 @@ public final class MainActivity extends Activity {
             cell.addView(sb, matchWrap());
             LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            clp.leftMargin = (i % 2 == 0) ? 0 : dp(10);
+            clp.leftMargin = (i % SESSION_DRUM_COLS == 0) ? 0 : dp(10);
             row.addView(cell, clp);
         }
         return col;
@@ -3894,6 +4044,7 @@ public final class MainActivity extends Activity {
         if (idx < 0 || idx >= SESSION_DRUM_PADS) return;
         engine.noteOn(SESSION_DRUM_NOTES[idx], Math.max(0.05f, sessionDrumVol[idx]));
         if (record) recordSessionEvent(0, idx);
+        if (sessionPadTitle != null) sessionPadTitle.setText(SESSION_DRUM_NAMES[idx]);
     }
 
     // Tap a chord pad: latch it as a sustained chord, or start a looping
@@ -3907,7 +4058,7 @@ public final class MainActivity extends Activity {
         recordSessionEvent(1, slot);
         if (sessionChordMode == 0) {
             sessionChordNotes = chordVoicing(chordRoot[slot], chordType[slot], chordBass[slot]);
-            for (int n : sessionChordNotes) engine.noteOn(n, 0.7f);
+            for (int n : sessionChordNotes) engine.loopKeyOn(n, 0.7f);
         } else {
             sessionLoopStep = 0;
             startSessionChordLoop(slot);
@@ -3925,10 +4076,12 @@ public final class MainActivity extends Activity {
                 if (!onSession || sessionActiveChord != slot) return;
                 int s = sessionLoopStep % 4;
                 if (s == 0) {
-                    engine.noteOn(v[0], 0.75f);                       // bass
+                    engine.loopKeyOff(v[0]);
+                    engine.loopKeyOn(v[0], 0.75f);                    // bass
                 } else {
                     for (int i = 1; i < v.length && i <= 3; i++) {    // upper voices
-                        engine.noteOn(v[i], s == 2 ? 0.55f : 0.4f);
+                        engine.loopKeyOff(v[i]);
+                        engine.loopKeyOn(v[i], s == 2 ? 0.55f : 0.4f);
                     }
                 }
                 sessionLoopStep++;
@@ -3944,7 +4097,7 @@ public final class MainActivity extends Activity {
             sessionChordLoop = null;
         }
         if (sessionChordNotes != null) {
-            for (int n : sessionChordNotes) engine.noteOff(n);
+            for (int n : sessionChordNotes) engine.loopKeyOff(n);
             sessionChordNotes = null;
         }
         if (sessionActiveChord >= 0) engine.allNotesOff();
@@ -3953,6 +4106,13 @@ public final class MainActivity extends Activity {
     }
 
     private void refreshSessionChordPads() {
+        if (sessionPadReadout != null) {
+            sessionPadReadout.setText(sessionActiveChord < 0 ? "Pad — none"
+                    : "Pad " + (sessionActiveChord + 1) + " — "
+                            + chordName(chordRoot[sessionActiveChord],
+                                    chordType[sessionActiveChord], chordBass[sessionActiveChord])
+                            + (sessionChordMode == 1 ? " (loop)" : " (held)"));
+        }
         if (sessionChordPads == null) return;
         for (int i = 0; i < sessionChordPads.length; i++) {
             TextView p = sessionChordPads[i];
@@ -4092,12 +4252,15 @@ public final class MainActivity extends Activity {
         stopSessionLoopPlayback();
         sessionLoopRec = false;
         sessionChordPads = null;
+        sessionPadReadout = null;
+        sessionPadTitle = null;
         engine.allNotesOff();
-        // Return where you came from: the landing card goes home, the ⋮ menu
-        // goes back to the piano screen.
+        // Session runs the loop-mix engine; stop it so the next screen starts in
+        // its own mode rather than inheriting drum/key routing.
+        engine.stop();
+        sessionEngineReady = false;
         if (sessionFromLanding) {
             sessionFromLanding = false;
-            engine.stop();
             showPicker();
         } else {
             showInstrumentScreen();
