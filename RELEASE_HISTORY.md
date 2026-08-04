@@ -1,5 +1,12 @@
 # Release History
 
+## 1.1.112 (version code 383) - 2026-08-04
+Session chord pads are now fully separate from Chord Mode.
+
+They were sharing one set of chord slots, so editing a pad in Session rewrote Chord Mode's chords and the reverse — and the two screens showed different chords because Session drew 12 pads over an 8-slot store, leaving the last four dead. Session now keeps its own 12 chords in its own storage. Editing, transposing or loading a key in Session no longer touches Chord Mode, and Chord Mode's slot count is back to whatever you set it to.
+
+The chord picker now edits whichever set it was opened from, so both screens use the same familiar dialog.
+
 ## 1.1.111 (version code 382) - 2026-08-04
 Session chords, three fixes.
 

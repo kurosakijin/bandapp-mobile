@@ -581,6 +581,11 @@ public final class MainActivity extends Activity {
     private int sessionSyncArm = -1;
     private TextView sessionSyncPill;
     private int sessionKey;   // 0 = C; transposes every chord pad together
+    // Session's chord pads are its own set — editing them never touches Chord
+    // Mode's slots, and Chord Mode never rewrites these.
+    private final int[] sessChordRoot = new int[SESSION_CHORD_PADS];
+    private final int[] sessChordType = new int[SESSION_CHORD_PADS];
+    private final int[] sessChordBass = new int[SESSION_CHORD_PADS];
     // Event-pattern loop: records pad/chord hits and replays them in sync.
     private static final int SESSION_LOOP_BARS = 2;
     private final java.util.ArrayList<int[]> sessionEvents = new java.util.ArrayList<>();
@@ -3236,7 +3241,18 @@ public final class MainActivity extends Activity {
     // (no fixed heights, no inner scrollers). Fixed column heights overflowed
     // the short landscape screen at reduced UI scales and clipped the bottom
     // rows with no way to reach them.
+    // Chord Mode's own slots.
     private void chordPickerDialog(final int slot) {
+        chordPickerDialog(slot, chordRoot, chordType, chordBass, () -> {
+            saveChordSlots();
+            if (chordBoard != null) chordBoard.setChords(chordRoot, chordType);
+        });
+    }
+
+    // The picker edits whichever chord set it is handed, so Chord Mode and
+    // Session can each keep their own pads without one overwriting the other.
+    private void chordPickerDialog(final int slot, final int[] rootArr, final int[] typeArr,
+            final int[] bassArr, final Runnable onCommit) {
         if (chordBoard != null) chordBoard.releaseAll();
         engine.allNotesOff();
         final Dialog dialog = new Dialog(this);
@@ -3297,8 +3313,8 @@ public final class MainActivity extends Activity {
         content.addView(row, topMargin(matchWrap(), 6));
 
         // Root and bass stay provisional until a chord type is tapped.
-        final int[] pickRoot = {chordRoot[slot]};
-        final int[] pickBass = {chordBass[slot]};
+        final int[] pickRoot = {rootArr[slot]};
+        final int[] pickBass = {bassArr[slot]};
         final View[] typeSel = new View[1];
         final Runnable[] rebuild = new Runnable[1];
         rebuild[0] = () -> {
@@ -3314,15 +3330,14 @@ public final class MainActivity extends Activity {
             typeSel[0] = null;
             for (int t = 0; t < CHORD_SUFFIX.length; t++) {
                 final int type = t;
-                boolean sel = (chordRoot[slot] == pickRoot[0] && chordType[slot] == type
-                        && chordBass[slot] == pickBass[0]);
+                boolean sel = (rootArr[slot] == pickRoot[0] && typeArr[slot] == type
+                        && bassArr[slot] == pickBass[0]);
                 TextView item = chordCell(chordName(pickRoot[0], type, pickBass[0]), sel);
                 item.setOnClickListener(v -> {
-                    chordRoot[slot] = pickRoot[0];
-                    chordType[slot] = type;
-                    chordBass[slot] = pickBass[0];
-                    saveChordSlots();
-                    if (chordBoard != null) chordBoard.setChords(chordRoot, chordType);
+                    rootArr[slot] = pickRoot[0];
+                    typeArr[slot] = type;
+                    bassArr[slot] = pickBass[0];
+                    onCommit.run();
                     dialog.dismiss();
                 });
                 if (sel) typeSel[0] = item;
@@ -3720,12 +3735,7 @@ public final class MainActivity extends Activity {
         sessionBpm = prefs.getInt("sess_bpm", metronomeBpm > 0 ? metronomeBpm : 100);
         sessionChordMode = prefs.getInt("sess_chord_mode", 0);
         sessionKey = prefs.getInt("sess_key", 0);
-        // The grid draws 12 pads, so every one of them needs a live chord slot
-        // behind it or the last four are dead to the touch.
-        if (chordSlotCount < SESSION_CHORD_PADS) {
-            chordSlotCount = SESSION_CHORD_PADS;
-            saveChordSlots();
-        }
+        loadSessionChords();
         for (int i = 0; i < SESSION_DRUM_PADS; i++) {
             sessionPadMidi[i] = prefs.getInt("sess_pad_midi" + i, -1);
             sessionPadMidiCh[i] = prefs.getInt("sess_pad_midich" + i, -1);
@@ -3976,11 +3986,46 @@ public final class MainActivity extends Activity {
     // Lay the key's own chords onto the pads: I, V, vi, IV, ii, iii, vii°, then
     // Imaj7, ii7, IVmaj7, V7, vi7.
     private void fillSessionKeyChords(int key) {
-        for (int i = 0; i < SESSION_CHORD_PADS && i < chordSlotCount; i++) {
-            chordRoot[i] = (key + SESSION_DEGREE[i]) % 12;
-            chordType[i] = SESSION_DEGREE_TYPE[i];
-            chordBass[i] = -1;
+        for (int i = 0; i < SESSION_CHORD_PADS; i++) {
+            sessChordRoot[i] = (key + SESSION_DEGREE[i]) % 12;
+            sessChordType[i] = SESSION_DEGREE_TYPE[i];
+            sessChordBass[i] = -1;
         }
+    }
+
+    private void loadSessionChords() {
+        String s = prefs.getString("sess_chords", null);
+        if (s == null) {
+            fillSessionKeyChords(sessionKey);
+            return;
+        }
+        String[] toks = s.split(",");
+        for (int i = 0; i < SESSION_CHORD_PADS; i++) {
+            String[] p = i < toks.length ? toks[i].split(":") : null;
+            if (p != null && p.length == 3) {
+                try {
+                    sessChordRoot[i] = ((Integer.parseInt(p[0]) % 12) + 12) % 12;
+                    int t = Integer.parseInt(p[1]);
+                    sessChordType[i] = (t >= 0 && t < CHORD_SUFFIX.length) ? t : 0;
+                    int b = Integer.parseInt(p[2]);
+                    sessChordBass[i] = (b >= 0 && b < 12) ? b : -1;
+                    continue;
+                } catch (NumberFormatException ignored) { }
+            }
+            sessChordRoot[i] = (sessionKey + SESSION_DEGREE[i]) % 12;
+            sessChordType[i] = SESSION_DEGREE_TYPE[i];
+            sessChordBass[i] = -1;
+        }
+    }
+
+    private void saveSessionChords() {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < SESSION_CHORD_PADS; i++) {
+            if (i > 0) sb.append(',');
+            sb.append(sessChordRoot[i]).append(':').append(sessChordType[i])
+                    .append(':').append(sessChordBass[i]);
+        }
+        prefs.edit().putString("sess_chords", sb.toString()).apply();
     }
 
     // Transpose every chord pad into a new key, keeping their relative degrees.
@@ -4024,7 +4069,7 @@ public final class MainActivity extends Activity {
                 fillSessionKeyChords(key);
                 sessionKey = key;
                 prefs.edit().putInt("sess_key", sessionKey).apply();
-                saveChordSlots();
+                saveSessionChords();
                 dialog.dismiss();
                 showSession();
             });
@@ -4033,13 +4078,15 @@ public final class MainActivity extends Activity {
             t.setOnLongClickListener(v -> {
                 stopSessionChord();
                 int delta = key - sessionKey;
-                for (int i = 0; i < SESSION_CHORD_PADS && i < chordSlotCount; i++) {
-                    chordRoot[i] = ((chordRoot[i] + delta) % 12 + 12) % 12;
-                    if (chordBass[i] >= 0) chordBass[i] = ((chordBass[i] + delta) % 12 + 12) % 12;
+                for (int i = 0; i < SESSION_CHORD_PADS; i++) {
+                    sessChordRoot[i] = ((sessChordRoot[i] + delta) % 12 + 12) % 12;
+                    if (sessChordBass[i] >= 0) {
+                        sessChordBass[i] = ((sessChordBass[i] + delta) % 12 + 12) % 12;
+                    }
                 }
                 sessionKey = key;
                 prefs.edit().putInt("sess_key", sessionKey).apply();
-                saveChordSlots();
+                saveSessionChords();
                 dialog.dismiss();
                 showSession();
                 return true;
@@ -4072,7 +4119,7 @@ public final class MainActivity extends Activity {
             }
             final int slot = i;
             TextView pad = new TextView(this);
-            pad.setText(chordName(chordRoot[i], chordType[i], chordBass[i]));
+            pad.setText(chordName(sessChordRoot[i], sessChordType[i], sessChordBass[i]));
             pad.setTextColor(Color.WHITE);
             pad.setTextSize(13);
             pad.setGravity(Gravity.CENTER);
@@ -4080,7 +4127,13 @@ public final class MainActivity extends Activity {
             pad.setBackground(sessionChordPadBg(false));
             pad.setClickable(true);
             pad.setOnClickListener(v -> triggerSessionChord(slot));
-            pad.setOnLongClickListener(v -> { chordPickerDialog(slot); return true; });
+            pad.setOnLongClickListener(v -> {
+                chordPickerDialog(slot, sessChordRoot, sessChordType, sessChordBass, () -> {
+                    saveSessionChords();
+                    refreshSessionChordPads();
+                });
+                return true;
+            });
             sessionChordPads[i] = pad;
             LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.MATCH_PARENT, 1f);
@@ -4446,14 +4499,15 @@ public final class MainActivity extends Activity {
     // Tap a chord pad: latch it as a sustained chord, or start a looping
     // rhythmic backing on it. Tapping the sounding pad again stops it.
     private void triggerSessionChord(int slot) {
-        if (slot < 0 || slot >= chordSlotCount) return;
+        if (slot < 0 || slot >= SESSION_CHORD_PADS) return;
         boolean same = sessionActiveChord == slot;
         stopSessionChord();
         if (same) return;
         sessionActiveChord = slot;
         recordSessionEvent(1, slot);
         if (sessionChordMode == 0) {
-            sessionChordNotes = chordVoicing(chordRoot[slot], chordType[slot], chordBass[slot]);
+            sessionChordNotes = chordVoicing(sessChordRoot[slot], sessChordType[slot],
+                    sessChordBass[slot]);
             for (int n : sessionChordNotes) engine.loopKeyOn(n, 0.7f);
         } else {
             sessionLoopStep = 0;
@@ -4465,7 +4519,8 @@ public final class MainActivity extends Activity {
     // The looping backing: an eighth-note pattern that alternates the chord's
     // bass with its upper voices, re-triggered in time with the tempo.
     private void startSessionChordLoop(final int slot) {
-        final int[] v = chordVoicing(chordRoot[slot], chordType[slot], chordBass[slot]);
+        final int[] v = chordVoicing(sessChordRoot[slot], sessChordType[slot],
+                sessChordBass[slot]);
         final long stepMs = Math.max(60L, Math.round(30000.0 / Math.max(40, sessionBpm)));
         sessionChordLoop = new Runnable() {
             @Override public void run() {
@@ -4505,8 +4560,9 @@ public final class MainActivity extends Activity {
         if (sessionPadReadout != null) {
             sessionPadReadout.setText(sessionActiveChord < 0 ? "Pad — none"
                     : "Pad " + (sessionActiveChord + 1) + " — "
-                            + chordName(chordRoot[sessionActiveChord],
-                                    chordType[sessionActiveChord], chordBass[sessionActiveChord])
+                            + chordName(sessChordRoot[sessionActiveChord],
+                                    sessChordType[sessionActiveChord],
+                                    sessChordBass[sessionActiveChord])
                             + (sessionChordMode == 1 ? " (loop)" : " (held)"));
         }
         if (sessionChordPads == null) return;
@@ -4514,7 +4570,7 @@ public final class MainActivity extends Activity {
             TextView p = sessionChordPads[i];
             if (p == null) continue;
             boolean on = i == sessionActiveChord;
-            p.setText(chordName(chordRoot[i], chordType[i], chordBass[i]));
+            p.setText(chordName(sessChordRoot[i], sessChordType[i], sessChordBass[i]));
             // Always light ink on the coloured pad; an active pad brightens.
             p.setTextColor(Color.WHITE);
             p.setBackground(sessionChordPadBg(on));
