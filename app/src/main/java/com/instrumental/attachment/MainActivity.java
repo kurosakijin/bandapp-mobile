@@ -3720,6 +3720,12 @@ public final class MainActivity extends Activity {
         sessionBpm = prefs.getInt("sess_bpm", metronomeBpm > 0 ? metronomeBpm : 100);
         sessionChordMode = prefs.getInt("sess_chord_mode", 0);
         sessionKey = prefs.getInt("sess_key", 0);
+        // The grid draws 12 pads, so every one of them needs a live chord slot
+        // behind it or the last four are dead to the touch.
+        if (chordSlotCount < SESSION_CHORD_PADS) {
+            chordSlotCount = SESSION_CHORD_PADS;
+            saveChordSlots();
+        }
         for (int i = 0; i < SESSION_DRUM_PADS; i++) {
             sessionPadMidi[i] = prefs.getInt("sess_pad_midi" + i, -1);
             sessionPadMidiCh[i] = prefs.getInt("sess_pad_midich" + i, -1);
@@ -3960,6 +3966,23 @@ public final class MainActivity extends Activity {
         return ROOT_NAMES[((sessionKey % 12) + 12) % 12];
     }
 
+    // The functional chords of a major key, laid out so the four that carry most
+    // songs (I V vi IV) land on the first four pads, the rest of the diatonic
+    // triads follow, and the last row adds the common sevenths.
+    // Semitones above the tonic, paired with a CHORD_SUFFIX type index.
+    private static final int[] SESSION_DEGREE = {0, 7, 9, 5, 2, 4, 11, 0, 2, 5, 7, 9};
+    private static final int[] SESSION_DEGREE_TYPE = {0, 0, 1, 0, 1, 1, 12, 4, 3, 4, 2, 3};
+
+    // Lay the key's own chords onto the pads: I, V, vi, IV, ii, iii, vii°, then
+    // Imaj7, ii7, IVmaj7, V7, vi7.
+    private void fillSessionKeyChords(int key) {
+        for (int i = 0; i < SESSION_CHORD_PADS && i < chordSlotCount; i++) {
+            chordRoot[i] = (key + SESSION_DEGREE[i]) % 12;
+            chordType[i] = SESSION_DEGREE_TYPE[i];
+            chordBass[i] = -1;
+        }
+    }
+
     // Transpose every chord pad into a new key, keeping their relative degrees.
     private void sessionKeyDialog() {
         final Dialog dialog = new Dialog(this);
@@ -3973,6 +3996,11 @@ public final class MainActivity extends Activity {
         title.setTextSize(18);
         title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         content.addView(title, matchWrap());
+        TextView keyHint = new TextView(this);
+        keyHint.setText("Tap to load that key's chords · hold to transpose the pads you have");
+        keyHint.setTextColor(COLOR_MUTED);
+        keyHint.setTextSize(11);
+        content.addView(keyHint, topMargin(matchWrap(), 4));
         LinearLayout grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.HORIZONTAL);
         for (int k = 0; k < 12; k++) {
@@ -3992,8 +4020,20 @@ public final class MainActivity extends Activity {
                     k == sessionKey ? COLOR_PURPLE : COLOR_BORDER, COLOR_PURPLE, true));
             t.setClickable(true);
             t.setOnClickListener(v -> {
+                stopSessionChord();
+                fillSessionKeyChords(key);
+                sessionKey = key;
+                prefs.edit().putInt("sess_key", sessionKey).apply();
+                saveChordSlots();
+                dialog.dismiss();
+                showSession();
+            });
+            // Long-press moves a hand-built set of pads to the new key instead of
+            // replacing them, so custom voicings survive a key change.
+            t.setOnLongClickListener(v -> {
+                stopSessionChord();
                 int delta = key - sessionKey;
-                for (int i = 0; i < SESSION_CHORD_PADS; i++) {
+                for (int i = 0; i < SESSION_CHORD_PADS && i < chordSlotCount; i++) {
                     chordRoot[i] = ((chordRoot[i] + delta) % 12 + 12) % 12;
                     if (chordBass[i] >= 0) chordBass[i] = ((chordBass[i] + delta) % 12 + 12) % 12;
                 }
@@ -4002,6 +4042,7 @@ public final class MainActivity extends Activity {
                 saveChordSlots();
                 dialog.dismiss();
                 showSession();
+                return true;
             });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
@@ -14327,8 +14368,11 @@ public final class MainActivity extends Activity {
                 if (ok) {
                     loadedLibraryAsset = asset;
                 }
-                // Only route if this sound is still the selected one.
-                if (onLoopMix && preset == loopKeysPreset && ok) {
+                // Only route if this sound is still the selected one. Session
+                // shares this picker but sets its own screen flag, so a library
+                // font picked there was loading and then never being routed —
+                // the pads stayed on the GM stand-in.
+                if ((onLoopMix || onSession) && preset == loopKeysPreset && ok) {
                     engine.setLoopKeysSlot(LAZY_PIANO_SLOT);
                 }
             });
@@ -14401,12 +14445,30 @@ public final class MainActivity extends Activity {
         });
     }
 
+    // Session's chord pads want keyboard voices that hold a chord — pianos, EPs,
+    // organs, pads, strings, synths. Plucked, mallet, percussive and FX banks
+    // only clutter that list, so they are left out of the Chord Kit picker
+    // (the Looper's own keys picker still shows everything).
+    private static final java.util.Set<String> CHORD_KIT_CATEGORIES =
+            new java.util.HashSet<>(java.util.Arrays.asList(
+                    "Acoustic Pianos", "Acoustic Pianos (Library)", "GM Piano",
+                    "70s Electric Pianos", "80s Electric Pianos", "Electric Pianos (Library)",
+                    "Organs", "Organs & Other (Library)", "GM Organ",
+                    "Pads & Strings", "GM Synth Pad", "GM Strings", "GM Ensemble",
+                    "Voices & Strings", "Vintage Workstation", "Signature Tones",
+                    "Stage Rig", "90s Dance", "Synth Leads & Brass", "GM Synth Lead",
+                    "GM Brass", "GM Reed", "GM Pipe"));
+
     private void populateLoopKeysSoundList(LinearLayout list, String filter, final Dialog dialog) {
         list.removeAllViews();
         loopKeysSelectedRow = null;
         String f = filter.trim().toLowerCase(Locale.US);
         String currentCategory = null;
         for (final TonePreset preset : TonePreset.forMode(InstrumentMode.PIANO)) {
+            if (onSession && !CHORD_KIT_CATEGORIES.contains(pianoCategory(preset))
+                    && preset != loopKeysPreset) {
+                continue;
+            }
             if (!f.isEmpty()
                     && !preset.label.toLowerCase(Locale.US).contains(f)
                     && !preset.detail.toLowerCase(Locale.US).contains(f)
@@ -14434,11 +14496,17 @@ public final class MainActivity extends Activity {
                     current ? darken(accent) : COLOR_SURFACE_RAISED,
                     current ? accent : COLOR_BORDER, accent, true));
             item.setOnClickListener(v -> {
+                // Switching the sound stops every voice, so a latched pad or a
+                // running backing loop has to be released first — otherwise the
+                // pad still reads as active while nothing sounds, and it takes a
+                // trip out of Session to clear.
+                if (onSession) stopSessionChord();
                 loopKeysPreset = preset;
                 prefs.edit().putString("loop_keys_preset", preset.name()).apply();
                 applyLoopKeysSound();
                 updateLoopSoundPill();
                 dialog.dismiss();
+                if (onSession) showSession();
             });
             if (current) {
                 loopKeysSelectedRow = item;

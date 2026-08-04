@@ -1,5 +1,14 @@
 # Release History
 
+## 1.1.111 (version code 382) - 2026-08-04
+Session chords, three fixes.
+
+Chord Kit list now shows only keyboard voices that can hold a chord — pianos, electric pianos, organs, pads, strings, synths, brass and reeds. Guitar, bass, mallet, percussive, ethnic, FX and Stylophone banks are hidden there (the Looper's own keys picker still lists everything).
+
+Changing the Chord Kit no longer kills the audio or leaves Session mute. A latched pad or running backing loop is now released before the sound switches, so the pad state matches what you hear instead of looking active while silent. Library soundfonts picked from Session were also loading and then never being routed, leaving the pads on the stand-in GM piano — fixed.
+
+Picking a Key now lays that key's own chords onto the pads: I, V, vi, IV, then ii, iii, vii-dim, then Imaj7, ii7, IVmaj7, V7, vi7. Hold a key instead of tapping it to transpose pads you built by hand. The grid draws 12 pads, so the chord slot count now rises to 12 — the last four pads were previously dead to the touch.
+
 ## 1.1.110 (version code 381) - 2026-08-04
 Fixed: long-pressing a Session drum pad did nothing, so imported pad samples were unreachable. The touch handler added for pad highlighting consumed the gesture before Android's long-press detection could run; the hold is now timed directly in that handler.
 
