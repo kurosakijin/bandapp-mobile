@@ -19,6 +19,32 @@
 - Real-time audio engine: `app/src/main/cpp/native_engine.cpp`
 - SoundFont assets: `app/src/main/assets/`
 
+## Source Control - READ THIS FIRST
+
+The working folder `D:\Instrumental App` is now a tracked git working copy of
+`https://github.com/kurosakijin/bandapp-mobile` on branch `main`. Before 1.1.104
+it was untracked, and that caused a real incident worth not repeating.
+
+What went wrong: the folder's source stayed current, but its `HANDOFF_SUMMARY.md`
+and `RELEASE_HISTORY.md` silently drifted six releases behind (they still ended at
+1.1.97 while 1.1.103 was live). A release run then bumped to a version tag that
+already existed on GitHub and the publish aborted.
+
+Working agreement now that it is tracked:
+
+- `git pull` before starting work, and commit plus push when finishing. If the
+  working tree and `origin/main` disagree, trust `origin/main`.
+- `release.sh` publishes the APK and both markdown files to the GitHub release,
+  but it does NOT commit or push source. Push the source yourself after shipping.
+- `release.sh` derives the next version from `app/build.gradle`, so that file must
+  match what is actually published or the tag will collide again. `versionCode`
+  only ever increases.
+- Never commit `bandapp-release.jks` or `keystore.properties`. This repository is
+  public and both are now in `.gitignore`, along with local-only material such as
+  `backup/`, `desktop/`, `images/`, `external soundfonts/`, and logs.
+- `core.autocrlf` is set to `true` in this clone. The repository stores LF, the
+  working files are CRLF. Without it, every file appears fully rewritten.
+
 ## Implemented Product Behavior
 
 ## Release 1.1.104 - Session Pad Workspace
