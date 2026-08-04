@@ -6849,11 +6849,15 @@ private:
         double pos = 0.0;
         bool active = false;
     };
-    std::atomic<int> swellPending_[6]{};
-    std::atomic<bool> swellReady_[6]{};
-    std::vector<float> swellSample_[6];
-    int swellSampleFrames_[6]{};
-    int swellSampleRate_[6]{48000, 48000, 48000, 48000, 48000, 48000};
+    // Slots 0-5 are the Kit Mode swells; 6-13 are the eight Session drum pads,
+    // so a user-imported WAV/OGG reuses the same one-shot voice machinery.
+    static constexpr int kNumOneShots = 14;
+    std::atomic<int> swellPending_[kNumOneShots]{};
+    std::atomic<bool> swellReady_[kNumOneShots]{};
+    std::vector<float> swellSample_[kNumOneShots];
+    int swellSampleFrames_[kNumOneShots]{};
+    int swellSampleRate_[kNumOneShots]{48000, 48000, 48000, 48000, 48000, 48000,
+            48000, 48000, 48000, 48000, 48000, 48000, 48000, 48000};
     SwellVoice swellVoice_[kMaxSwellVoices];
     int swellVoiceCursor_ = 0;
     static constexpr int k808Slot = 1;   // HS TR-808: remap pads with no native sample

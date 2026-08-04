@@ -1,5 +1,28 @@
 # Release History
 
+## 1.1.108 (version code 379) - 2026-08-04
+- Gave Session its own dark stage surface: a solid deep-violet ground with purple
+  chord and drum panels and a blue drum-volume panel, matching the reference
+  layout while the rest of the app stays on the light workspace.
+- Chord pads are solid purple tiles with white text; the active pad brightens and
+  takes a white outline, so it is readable at a glance.
+- Every Session label uses light ink, removing the dark-on-dark text.
+- Drum volume labels show an imported sample's name once a pad has one.
+- All fills are fully opaque colours. No transparency, gradients, or blur are
+  used anywhere in this screen.
+
+## 1.1.107 (version code 378) - 2026-08-04
+- Session drum pads now light up on every hit, from a screen tap or a synced
+  controller pad, and each pad carries its own colour.
+- Fixed the active chord pad rendering dark ink on a dark fill, which made the
+  chord name unreadable on the light workspace. Active pads now fill solid purple
+  with white text.
+- Long-pressing a drum pad imports a WAV, OGG, MP3, or M4A file onto it through
+  Android's decoder, replacing the kit sound until cleared.
+- Added Sync Pads for controllers with their own pads, such as the MPK Mini MK3.
+  Arm it, strike each hardware pad in turn, and those notes then trigger the
+  matching app pads; bindings persist.
+
 ## 1.1.106 (version code 377) - 2026-08-04
 - Fixed Session drum pads playing piano notes instead of drums. Session now runs
   the loop-mix engine, where pad hits strike the drum kit and chords play through

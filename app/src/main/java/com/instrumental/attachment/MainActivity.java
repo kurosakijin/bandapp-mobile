@@ -528,6 +528,15 @@ public final class MainActivity extends Activity {
     // ---- Session: live/recorded pad workspace (chord pads + drum pads) ----
     // Left = chord pads driving a background loop, right = 8 drum pads with
     // their own volumes. Keys are played from a MIDI keyboard only.
+    // Session runs its own dark "stage" surface, unlike the light workspace.
+    // Every colour here is fully opaque: no alpha, no gradients, no glass.
+    private static final int SESSION_BG = Color.rgb(46, 34, 74);
+    private static final int SESSION_CHORD_PANEL = Color.rgb(66, 48, 110);
+    private static final int SESSION_CHORD_PAD = Color.rgb(103, 82, 165);
+    private static final int SESSION_DRUM_PANEL = Color.rgb(38, 74, 120);
+    private static final int SESSION_PANEL_EDGE = Color.rgb(96, 82, 148);
+    private static final int SESSION_INK = Color.rgb(240, 238, 250);
+    private static final int SESSION_INK_DIM = Color.rgb(178, 170, 208);
     private static final int SESSION_CHORD_COLS = 3;    // chord grid is 3 wide
     private static final int SESSION_CHORD_PADS = 12;   // ...and 4 tall
     private static final int SESSION_DRUM_PADS = 8;
@@ -535,6 +544,16 @@ public final class MainActivity extends Activity {
     private static final String[] SESSION_DRUM_NAMES =
             {"Kick", "Clap", "Hihat", "Snare", "Tom", "SFX Rise", "Crash", "Roll Kick"};
     private static final int[] SESSION_DRUM_NOTES = {36, 39, 42, 38, 45, 55, 49, 35};
+    // Each pad carries its own colour, as on the reference layout.
+    private static final int[] SESSION_DRUM_COLORS = {
+            Color.rgb(150, 68, 78),    // Kick 1   - deep red
+            Color.rgb(126, 96, 196),   // Clap 1   - violet
+            Color.rgb(108, 112, 200),  // Hihat 1  - indigo
+            Color.rgb(58, 150, 178),   // Snare 1  - teal
+            Color.rgb(122, 88, 180),   // Tom 1    - purple
+            Color.rgb(206, 138, 62),   // SFX Rise - amber
+            Color.rgb(122, 132, 148),  // Crash    - slate
+            Color.rgb(52, 130, 190)};  // Roll Kick- blue
     private boolean onSession;
     private boolean sessionFromLanding;   // entered from the landing card, not the ⋮ menu
     private boolean sessionEngineReady;   // engine is running in loop-mix mode for Session
@@ -548,6 +567,17 @@ public final class MainActivity extends Activity {
     private TextView[] sessionChordPads;
     private TextView sessionModePill, sessionLoopPill, sessionRecPill;
     private TextView sessionPadReadout, sessionPadTitle;
+    private TextView[] sessionDrumPads = new TextView[SESSION_DRUM_PADS];
+    // One-shot sampler slots 6..13 back the eight Session pads (0-5 are swells).
+    private static final int SESSION_SAMPLE_SLOT0 = 6;
+    private static final int REQ_PICK_PAD_SAMPLE = 4211;
+    private final boolean[] sessionPadHasSample = new boolean[SESSION_DRUM_PADS];
+    private int sessionSampleTarget = -1;
+    // MIDI pad sync (MPK-style controllers): the hardware note bound to each app
+    // pad, -1 = unbound. sessionSyncArm is the pad waiting to learn a note.
+    private final int[] sessionPadMidi = new int[SESSION_DRUM_PADS];
+    private int sessionSyncArm = -1;
+    private TextView sessionSyncPill;
     private int sessionKey;   // 0 = C; transposes every chord pad together
     // Event-pattern loop: records pad/chord hits and replays them in sync.
     private static final int SESSION_LOOP_BARS = 2;
@@ -3688,6 +3718,9 @@ public final class MainActivity extends Activity {
         sessionBpm = prefs.getInt("sess_bpm", metronomeBpm > 0 ? metronomeBpm : 100);
         sessionChordMode = prefs.getInt("sess_chord_mode", 0);
         sessionKey = prefs.getInt("sess_key", 0);
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) {
+            sessionPadMidi[i] = prefs.getInt("sess_pad_midi" + i, -1);
+        }
 
         LinearLayout screen = new LinearLayout(this);
         screen.setOrientation(LinearLayout.VERTICAL);
@@ -3698,7 +3731,7 @@ public final class MainActivity extends Activity {
         body.setOrientation(LinearLayout.HORIZONTAL);
 
         // --- LEFT: Key / Chord Kit selectors, the 3x4 chord grid, pad readout ---
-        LinearLayout chords = stagePanel("CHORDS · BACKGROUND LOOP", COLOR_PURPLE);
+        LinearLayout chords = sessionPanel("CHORDS · BACKGROUND LOOP", SESSION_CHORD_PANEL);
         chords.addView(sessionFieldRow("Key", sessionKeyLabel(),
                 v -> sessionKeyDialog()), matchWrap());
         chords.addView(sessionFieldRow("Chord Kit", loopKeysPreset.label,
@@ -3706,7 +3739,7 @@ public final class MainActivity extends Activity {
         chords.addView(buildSessionChordGrid(), topMargin(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), 8));
         sessionPadReadout = new TextView(this);
-        sessionPadReadout.setTextColor(COLOR_MUTED);
+        sessionPadReadout.setTextColor(SESSION_INK_DIM);
         sessionPadReadout.setTextSize(11);
         sessionPadReadout.setSingleLine(true);
         sessionPadReadout.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -3726,23 +3759,23 @@ public final class MainActivity extends Activity {
         head.setGravity(Gravity.CENTER_HORIZONTAL);
         sessionPadTitle = new TextView(this);
         sessionPadTitle.setText("Pad 1");
-        sessionPadTitle.setTextColor(COLOR_TEXT);
+        sessionPadTitle.setTextColor(SESSION_INK);
         sessionPadTitle.setTextSize(15);
         sessionPadTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         head.addView(sessionPadTitle, matchWrap());
         TextView kitName = new TextView(this);
         kitName.setText(loopKitLabel());
-        kitName.setTextColor(COLOR_MUTED);
+        kitName.setTextColor(SESSION_INK_DIM);
         kitName.setTextSize(11);
         head.addView(kitName, topMargin(matchWrap(), 2));
         right.addView(head, matchWrap());
 
-        LinearLayout pads = stagePanel("DRUM PADS", COLOR_AMBER);
+        LinearLayout pads = sessionPanel("DRUM PADS", SESSION_CHORD_PANEL);
         pads.addView(buildSessionDrumGrid(), new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
         right.addView(pads, topMargin(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.35f), 6));
-        LinearLayout vols = stagePanel("DRUM PAD VOLUME", COLOR_AMBER);
+        LinearLayout vols = sessionPanel("DRUM PAD VOLUME", SESSION_DRUM_PANEL);
         vols.addView(buildSessionDrumVolumes(), matchWrap());
         right.addView(vols, topMargin(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), 8));
@@ -3754,8 +3787,39 @@ public final class MainActivity extends Activity {
         screen.addView(body, topMargin(new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), 6));
         enablePadInsets(screen, screen);
-        paintStage(screen);
+        // Session is its own dark stage, so it paints a solid deep-violet ground
+        // instead of the light workspace background.
+        screen.setBackgroundColor(SESSION_BG);
         setContentView(screen);
+    }
+
+    // A Session panel: solid coloured face, hairline rule under an LED label.
+    private LinearLayout sessionPanel(String label, int face) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(9), dp(12), dp(12));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.RECTANGLE);
+        bg.setColor(face);
+        bg.setCornerRadius(dp(12));
+        bg.setStroke(dp(1), SESSION_PANEL_EDGE);
+        panel.setBackground(bg);
+
+        TextView lbl = new TextView(this);
+        lbl.setText(label);
+        lbl.setTextColor(SESSION_INK_DIM);
+        lbl.setTextSize(10.5f);
+        lbl.setLetterSpacing(0.16f);
+        lbl.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        panel.addView(lbl, matchWrap());
+        View rule = new View(this);
+        rule.setBackgroundColor(SESSION_PANEL_EDGE);
+        LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, Math.max(1, dp(1)));
+        rLp.topMargin = dp(7);
+        rLp.bottomMargin = dp(7);
+        panel.addView(rule, rLp);
+        return panel;
     }
 
     // Session needs drums AND melodic keys at once, which is exactly what the
@@ -3820,9 +3884,23 @@ public final class MainActivity extends Activity {
         final TextView imp = transportPill("＋ SF2");
         imp.setOnClickListener(v -> pickExternalSf2Folder());
 
+        // Bind a pad-equipped controller (MPK Mini MK3 and friends): arm, then
+        // strike each hardware pad in turn to map it onto the app's pads.
+        sessionSyncPill = transportPill("⇄ Sync Pads");
+        sessionSyncPill.setOnClickListener(v -> {
+            if (sessionSyncArm >= 0) {
+                sessionSyncArm = -1;
+            } else {
+                sessionSyncArm = 0;
+                Toast.makeText(this, "Strike pad 1 on your controller", Toast.LENGTH_SHORT).show();
+            }
+            refreshSessionSyncPill();
+        });
+        refreshSessionSyncPill();
+
         java.util.List<View> play = java.util.Arrays.asList(sessionModePill, tempo);
         java.util.List<View> rec = java.util.Arrays.asList(sessionLoopPill, sessionRecPill);
-        java.util.List<View> snd = java.util.Arrays.asList(keys, imp);
+        java.util.List<View> snd = java.util.Arrays.asList(keys, imp, sessionSyncPill);
         addPillCluster(pills, "CHORDS", play, false);
         addPillCluster(pills, "RECORD", rec, true);
         addPillCluster(pills, "KEYS · MIDI", snd, true);
@@ -3846,18 +3924,18 @@ public final class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         TextView lbl = new TextView(this);
         lbl.setText(label);
-        lbl.setTextColor(COLOR_MUTED);
+        lbl.setTextColor(SESSION_INK_DIM);
         lbl.setTextSize(11);
         row.addView(lbl, new LinearLayout.LayoutParams(dp(62),
                 LinearLayout.LayoutParams.WRAP_CONTENT));
         TextView box = new TextView(this);
         box.setText(value);
-        box.setTextColor(COLOR_TEXT);
+        box.setTextColor(Color.WHITE);
         box.setTextSize(12);
         box.setSingleLine(true);
         box.setEllipsize(android.text.TextUtils.TruncateAt.END);
         box.setPadding(dp(8), dp(5), dp(8), dp(5));
-        box.setBackground(moduleBackground(COLOR_SURFACE_RAISED, COLOR_BORDER, COLOR_PURPLE, true));
+        box.setBackground(sessionChordPadBg(false));
         box.setClickable(true);
         box.setOnClickListener(onTap);
         row.addView(box, new LinearLayout.LayoutParams(0,
@@ -3903,11 +3981,11 @@ public final class MainActivity extends Activity {
             }
             TextView t = new TextView(this);
             t.setText(ROOT_NAMES[k]);
-            t.setTextColor(k == sessionKey ? COLOR_TEXT : COLOR_MUTED);
+            t.setTextColor(k == sessionKey ? Color.WHITE : COLOR_TEXT);
             t.setTextSize(14);
             t.setGravity(Gravity.CENTER);
             t.setPadding(dp(6), dp(10), dp(6), dp(10));
-            t.setBackground(moduleBackground(k == sessionKey ? darken(COLOR_PURPLE) : COLOR_SURFACE_RAISED,
+            t.setBackground(moduleBackground(k == sessionKey ? COLOR_PURPLE : COLOR_SURFACE_RAISED,
                     k == sessionKey ? COLOR_PURPLE : COLOR_BORDER, COLOR_PURPLE, true));
             t.setClickable(true);
             t.setOnClickListener(v -> {
@@ -3951,11 +4029,11 @@ public final class MainActivity extends Activity {
             final int slot = i;
             TextView pad = new TextView(this);
             pad.setText(chordName(chordRoot[i], chordType[i], chordBass[i]));
-            pad.setTextColor(COLOR_TEXT);
+            pad.setTextColor(Color.WHITE);
             pad.setTextSize(13);
             pad.setGravity(Gravity.CENTER);
             pad.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            pad.setBackground(moduleBackground(COLOR_SURFACE_RAISED, COLOR_BORDER, COLOR_PURPLE, true));
+            pad.setBackground(sessionChordPadBg(false));
             pad.setClickable(true);
             pad.setOnClickListener(v -> triggerSessionChord(slot));
             pad.setOnLongClickListener(v -> { chordPickerDialog(slot); return true; });
@@ -3980,15 +4058,33 @@ public final class MainActivity extends Activity {
                         LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), i == 0 ? 0 : 6));
             }
             final int idx = i;
-            TextView pad = new TextView(this);
-            pad.setText(SESSION_DRUM_NAMES[i]);
-            pad.setTextColor(COLOR_TEXT);
+            final TextView pad = new TextView(this);
+            pad.setText(sessionDrumLabel(idx));
+            pad.setTextColor(Color.WHITE);
             pad.setTextSize(13);
             pad.setGravity(Gravity.CENTER);
             pad.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-            pad.setBackground(moduleBackground(COLOR_SURFACE_RAISED, COLOR_BORDER, COLOR_AMBER, true));
+            pad.setBackground(sessionPadBg(idx, false));
             pad.setClickable(true);
-            pad.setOnClickListener(v -> hitSessionDrum(idx, true));
+            sessionDrumPads[idx] = pad;
+            // Light the pad on touch-down and release it on up, so a hit is seen
+            // as well as heard.
+            pad.setOnTouchListener((v, e) -> {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        pad.setBackground(sessionPadBg(idx, true));
+                        hitSessionDrum(idx, true);
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        pad.setBackground(sessionPadBg(idx, false));
+                        v.performClick();
+                        return true;
+                }
+                return false;
+            });
+            pad.setOnClickListener(v -> { });
+            pad.setOnLongClickListener(v -> { sessionPadSampleDialog(idx); return true; });
             LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.MATCH_PARENT, 1f);
             plp.leftMargin = (i % SESSION_DRUM_COLS == 0) ? 0 : dp(6);
@@ -4012,8 +4108,8 @@ public final class MainActivity extends Activity {
             LinearLayout cell = new LinearLayout(this);
             cell.setOrientation(LinearLayout.VERTICAL);
             TextView lbl = new TextView(this);
-            lbl.setText(SESSION_DRUM_NAMES[i]);
-            lbl.setTextColor(COLOR_MUTED);
+            lbl.setText(sessionDrumLabel(i));
+            lbl.setTextColor(SESSION_INK_DIM);
             lbl.setTextSize(10);
             lbl.setSingleLine(true);
             lbl.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -4040,11 +4136,242 @@ public final class MainActivity extends Activity {
         return col;
     }
 
+    private GradientDrawable sessionChordPadBg(boolean active) {
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.RECTANGLE);
+        g.setColor(active ? lighten(SESSION_CHORD_PAD) : SESSION_CHORD_PAD);
+        g.setCornerRadius(dp(9));
+        g.setStroke(dp(active ? 2 : 1), active ? Color.WHITE : SESSION_PANEL_EDGE);
+        return g;
+    }
+
+    private int sessionPadForMidi(int note) {
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) if (sessionPadMidi[i] == note) return i;
+        return -1;
+    }
+
+    // Learn: bind the struck hardware note to the pad being synced, then move on
+    // to the next pad so a whole controller can be mapped in one pass.
+    private void bindSessionPadMidi(int note) {
+        if (sessionSyncArm < 0 || sessionSyncArm >= SESSION_DRUM_PADS) return;
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) {
+            if (sessionPadMidi[i] == note) sessionPadMidi[i] = -1;   // one note, one pad
+        }
+        sessionPadMidi[sessionSyncArm] = note;
+        prefs.edit().putInt("sess_pad_midi" + sessionSyncArm, note).apply();
+        flashSessionPad(sessionSyncArm);
+        sessionSyncArm++;
+        if (sessionSyncArm >= SESSION_DRUM_PADS) {
+            sessionSyncArm = -1;
+            Toast.makeText(this, "All pads synced", Toast.LENGTH_SHORT).show();
+        }
+        refreshSessionSyncPill();
+    }
+
+    // Sound the pad and light it briefly, so a hardware hit is visible on screen.
+    private void flashSessionPad(int idx) {
+        if (idx < 0 || idx >= SESSION_DRUM_PADS) return;
+        hitSessionDrum(idx, true);
+        final TextView pad = sessionDrumPads[idx];
+        if (pad == null) return;
+        pad.setBackground(sessionPadBg(idx, true));
+        handler.postDelayed(() -> {
+            if (sessionDrumPads[idx] == pad) pad.setBackground(sessionPadBg(idx, false));
+        }, 110);
+    }
+
+    private void refreshSessionSyncPill() {
+        if (sessionSyncPill == null) return;
+        boolean arming = sessionSyncArm >= 0;
+        sessionSyncPill.setText(arming
+                ? "◉ Tap pad " + (sessionSyncArm + 1)
+                : "⇄ Sync Pads");
+        styleTogglePill(sessionSyncPill, arming);
+    }
+
+    // Filled pad in its own colour; the pressed state brightens it noticeably.
+    private GradientDrawable sessionPadBg(int idx, boolean pressed) {
+        int base = SESSION_DRUM_COLORS[idx % SESSION_DRUM_COLORS.length];
+        int c = pressed ? lighten(base) : base;
+        GradientDrawable g = new GradientDrawable();
+        g.setShape(GradientDrawable.RECTANGLE);
+        g.setColor(c);
+        g.setCornerRadius(dp(10));
+        g.setStroke(dp(pressed ? 2 : 1), pressed ? Color.WHITE : darken(base));
+        return g;
+    }
+
+    private static int lighten(int color) {
+        return Color.rgb(
+                Math.min(255, Math.round(Color.red(color) * 0.35f + 255 * 0.65f)),
+                Math.min(255, Math.round(Color.green(color) * 0.35f + 255 * 0.65f)),
+                Math.min(255, Math.round(Color.blue(color) * 0.35f + 255 * 0.65f)));
+    }
+
+    // Pads show their imported sample's name once one is assigned.
+    private String sessionDrumLabel(int idx) {
+        String custom = prefs.getString("sess_pad_name" + idx, null);
+        return custom != null ? custom : SESSION_DRUM_NAMES[idx];
+    }
+
     private void hitSessionDrum(int idx, boolean record) {
         if (idx < 0 || idx >= SESSION_DRUM_PADS) return;
-        engine.noteOn(SESSION_DRUM_NOTES[idx], Math.max(0.05f, sessionDrumVol[idx]));
+        // An imported sample replaces the kit note for that pad.
+        if (sessionPadHasSample[idx]) {
+            engine.triggerSwell(SESSION_SAMPLE_SLOT0 + idx);
+        } else {
+            engine.noteOn(SESSION_DRUM_NOTES[idx], Math.max(0.05f, sessionDrumVol[idx]));
+        }
         if (record) recordSessionEvent(0, idx);
-        if (sessionPadTitle != null) sessionPadTitle.setText(SESSION_DRUM_NAMES[idx]);
+        if (sessionPadTitle != null) sessionPadTitle.setText(sessionDrumLabel(idx));
+    }
+
+    // Long-press a pad: load your own WAV/OGG onto it, or clear back to the kit.
+    private void sessionPadSampleDialog(final int idx) {
+        final Dialog dialog = new Dialog(this);
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(dialogSheet());
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(16), dp(16), dp(14));
+        TextView title = new TextView(this);
+        title.setText(sessionDrumLabel(idx));
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(18);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        content.addView(title, matchWrap());
+        TextView sub = new TextView(this);
+        sub.setText(sessionPadHasSample[idx]
+                ? "Playing an imported sample."
+                : "Playing the drum kit sound.");
+        sub.setTextColor(COLOR_MUTED);
+        sub.setTextSize(12);
+        content.addView(sub, topMargin(matchWrap(), 4));
+
+        content.addView(menuItem("＋  Import audio (WAV / OGG / MP3)…", () -> {
+            dialog.dismiss();
+            sessionSampleTarget = idx;
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("audio/*");
+            try {
+                startActivityForResult(i, REQ_PICK_PAD_SAMPLE);
+            } catch (RuntimeException e) {
+                Toast.makeText(this, "No file picker available", Toast.LENGTH_SHORT).show();
+            }
+        }), topMargin(matchWrap(), 12));
+
+        if (sessionPadHasSample[idx]) {
+            content.addView(menuItem("✕  Clear · back to kit sound", () -> {
+                sessionPadHasSample[idx] = false;
+                prefs.edit().remove("sess_pad_name" + idx).apply();
+                dialog.dismiss();
+                showSession();
+            }), topMargin(matchWrap(), 8));
+        }
+        dialog.setContentView(content);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(dialogWidth(0.8f, 420),
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
+    }
+
+    // Decode any Android-supported audio file (WAV, OGG, MP3, M4A) to interleaved
+    // float PCM and hand it to the one-shot sampler slot for this pad.
+    private void loadPadSampleFromUri(int idx, Uri uri) {
+        android.media.MediaExtractor ex = new android.media.MediaExtractor();
+        android.media.MediaCodec codec = null;
+        try {
+            ex.setDataSource(this, uri, null);
+            int track = -1;
+            android.media.MediaFormat fmt = null;
+            for (int t = 0; t < ex.getTrackCount(); t++) {
+                android.media.MediaFormat f = ex.getTrackFormat(t);
+                String mime = f.getString(android.media.MediaFormat.KEY_MIME);
+                if (mime != null && mime.startsWith("audio/")) { track = t; fmt = f; break; }
+            }
+            if (track < 0 || fmt == null) { Toast.makeText(this, "No audio track", Toast.LENGTH_SHORT).show(); return; }
+            ex.selectTrack(track);
+            int rate = fmt.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE);
+            int channels = fmt.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT);
+            codec = android.media.MediaCodec.createDecoderByType(
+                    fmt.getString(android.media.MediaFormat.KEY_MIME));
+            codec.configure(fmt, null, null, 0);
+            codec.start();
+
+            java.io.ByteArrayOutputStream pcm = new java.io.ByteArrayOutputStream();
+            android.media.MediaCodec.BufferInfo info = new android.media.MediaCodec.BufferInfo();
+            boolean sawInputEnd = false, sawOutputEnd = false;
+            int guard = 0;
+            while (!sawOutputEnd && guard++ < 100000) {
+                if (!sawInputEnd) {
+                    int in = codec.dequeueInputBuffer(10000);
+                    if (in >= 0) {
+                        java.nio.ByteBuffer buf = codec.getInputBuffer(in);
+                        int sz = buf == null ? -1 : ex.readSampleData(buf, 0);
+                        if (sz < 0) {
+                            codec.queueInputBuffer(in, 0, 0, 0,
+                                    android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                            sawInputEnd = true;
+                        } else {
+                            codec.queueInputBuffer(in, 0, sz, ex.getSampleTime(), 0);
+                            ex.advance();
+                        }
+                    }
+                }
+                int out = codec.dequeueOutputBuffer(info, 10000);
+                if (out >= 0) {
+                    java.nio.ByteBuffer buf = codec.getOutputBuffer(out);
+                    if (buf != null && info.size > 0) {
+                        byte[] chunk = new byte[info.size];
+                        buf.position(info.offset);
+                        buf.get(chunk);
+                        pcm.write(chunk);
+                    }
+                    codec.releaseOutputBuffer(out, false);
+                    if ((info.flags & android.media.MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                        sawOutputEnd = true;
+                    }
+                } else if (out == android.media.MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    android.media.MediaFormat of = codec.getOutputFormat();
+                    rate = of.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE);
+                    channels = of.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT);
+                }
+            }
+            byte[] bytes = pcm.toByteArray();
+            int frames = bytes.length / (2 * Math.max(1, channels));
+            if (frames <= 0) { Toast.makeText(this, "Empty audio", Toast.LENGTH_SHORT).show(); return; }
+            // Cap very long files so a pad stays a one-shot, not a track.
+            int maxFrames = rate * 12;
+            if (frames > maxFrames) frames = maxFrames;
+            float[] pcmF = new float[frames * channels];
+            java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(bytes)
+                    .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            for (int i = 0; i < pcmF.length; i++) pcmF[i] = bb.getShort() / 32768f;
+            engine.loadSwellSample(SESSION_SAMPLE_SLOT0 + idx, pcmF, frames, channels, rate);
+            sessionPadHasSample[idx] = true;
+            prefs.edit().putString("sess_pad_name" + idx, displayNameFor(uri)).apply();
+            Toast.makeText(this, "Loaded onto " + sessionDrumLabel(idx), Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Couldn't decode that audio file", Toast.LENGTH_LONG).show();
+        } finally {
+            if (codec != null) { try { codec.stop(); codec.release(); } catch (RuntimeException ignore) { } }
+            ex.release();
+        }
+    }
+
+    private String displayNameFor(Uri uri) {
+        String name = null;
+        try (android.database.Cursor c = getContentResolver().query(uri, null, null, null, null)) {
+            if (c != null && c.moveToFirst()) {
+                int i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                if (i >= 0) name = c.getString(i);
+            }
+        } catch (RuntimeException ignore) { }
+        if (name == null) name = "Sample";
+        int dot = name.lastIndexOf('.');
+        if (dot > 0) name = name.substring(0, dot);
+        return name.length() > 14 ? name.substring(0, 14) : name;
     }
 
     // Tap a chord pad: latch it as a sustained chord, or start a looping
@@ -4119,9 +4446,9 @@ public final class MainActivity extends Activity {
             if (p == null) continue;
             boolean on = i == sessionActiveChord;
             p.setText(chordName(chordRoot[i], chordType[i], chordBass[i]));
-            p.setTextColor(on ? COLOR_TEXT : COLOR_MUTED);
-            p.setBackground(moduleBackground(on ? darken(COLOR_PURPLE) : COLOR_SURFACE_RAISED,
-                    on ? COLOR_PURPLE : COLOR_BORDER, COLOR_PURPLE, true));
+            // Always light ink on the coloured pad; an active pad brightens.
+            p.setTextColor(Color.WHITE);
+            p.setBackground(sessionChordPadBg(on));
         }
     }
 
@@ -6322,6 +6649,15 @@ public final class MainActivity extends Activity {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
+        if (request == REQ_PICK_PAD_SAMPLE) {
+            if (result == RESULT_OK && data != null && data.getData() != null
+                    && sessionSampleTarget >= 0) {
+                loadPadSampleFromUri(sessionSampleTarget, data.getData());
+                sessionSampleTarget = -1;
+                if (onSession) showSession();
+            }
+            return;
+        }
         if (request == REQ_PICK_SF2_FOLDER) {
             int flags = data.getFlags()
                     & (Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -17036,6 +17372,25 @@ public final class MainActivity extends Activity {
                         handler.post(() -> onMidiLearn(note, channel0));
                     }
                     dispatchDrumMidi(note, velocity, on, channel0);
+                    return;
+                }
+                // Session: a controller's own pads (MPK-style) drive the app pads.
+                // While Sync is armed the next struck pad is bound; afterwards a
+                // bound note fires the matching app pad, and everything else
+                // still plays the keys sound.
+                if (onSession) {
+                    if (on && sessionSyncArm >= 0) {
+                        final int bound = note;
+                        handler.post(() -> bindSessionPadMidi(bound));
+                        return;
+                    }
+                    int padIdx = sessionPadForMidi(note);
+                    if (padIdx >= 0) {
+                        if (on) handler.post(() -> flashSessionPad(padIdx));
+                        return;
+                    }
+                    if (on) engine.loopKeyOn(note, velocity / 127.0f);
+                    else engine.loopKeyOff(note);
                     return;
                 }
                 if (onLoopMix) {
