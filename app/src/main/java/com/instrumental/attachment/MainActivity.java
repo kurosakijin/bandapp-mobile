@@ -47,6 +47,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.Button;
@@ -4070,23 +4071,38 @@ public final class MainActivity extends Activity {
             pad.setClickable(true);
             sessionDrumPads[idx] = pad;
             // Light the pad on touch-down and release it on up, so a hit is seen
-            // as well as heard.
+            // as well as heard. This listener consumes the gesture, so the View's
+            // own long-press detection never runs and the sample dialog has to be
+            // timed here by hand.
+            final Runnable hold = () -> {
+                pad.setBackground(sessionPadBg(idx, false));
+                sessionPadSampleDialog(idx);
+            };
+            final float[] down = new float[2];
+            final int slop = ViewConfiguration.get(this).getScaledTouchSlop();
             pad.setOnTouchListener((v, e) -> {
                 switch (e.getActionMasked()) {
                     case MotionEvent.ACTION_DOWN:
+                        down[0] = e.getX();
+                        down[1] = e.getY();
                         pad.setBackground(sessionPadBg(idx, true));
                         hitSessionDrum(idx, true);
+                        pad.postDelayed(hold, ViewConfiguration.getLongPressTimeout());
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        if (Math.abs(e.getX() - down[0]) > slop
+                                || Math.abs(e.getY() - down[1]) > slop) {
+                            pad.removeCallbacks(hold);
+                        }
                         return true;
                     case MotionEvent.ACTION_UP:
                     case MotionEvent.ACTION_CANCEL:
+                        pad.removeCallbacks(hold);
                         pad.setBackground(sessionPadBg(idx, false));
-                        v.performClick();
                         return true;
                 }
                 return false;
             });
-            pad.setOnClickListener(v -> { });
-            pad.setOnLongClickListener(v -> { sessionPadSampleDialog(idx); return true; });
             LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.MATCH_PARENT, 1f);
             plp.leftMargin = (i % SESSION_DRUM_COLS == 0) ? 0 : dp(6);

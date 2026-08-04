@@ -1,5 +1,10 @@
 # Release History
 
+## 1.1.110 (version code 381) - 2026-08-04
+Fixed: long-pressing a Session drum pad did nothing, so imported pad samples were unreachable. The touch handler added for pad highlighting consumed the gesture before Android's long-press detection could run; the hold is now timed directly in that handler.
+
+Long-press a drum pad again to import a WAV/OGG/MP3 sample or clear it back to the kit sound. Sliding off the pad cancels the hold, so a normal hit still just plays.
+
 ## 1.1.109 (version code 380) - 2026-08-04
 - Session pad sync now records the MIDI channel alongside the note, so a
   controller whose pads and keys share note numbers on different channels no
