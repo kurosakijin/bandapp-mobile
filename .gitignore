@@ -7,3 +7,18 @@ local.properties
 *.iml
 app/build/
 captures/
+
+# Signing secrets - never commit (this repo is public)
+*.jks
+*.keystore
+keystore.properties
+
+# Local-only working material, not part of the app source
+backup/
+desktop/
+images/
+drum kit extra/
+external soundfonts/
+soundfont-downloads/
+*.log
+ui-preview*.png
