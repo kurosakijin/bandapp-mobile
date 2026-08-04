@@ -524,6 +524,31 @@ public final class MainActivity extends Activity {
     private Runnable mixerPoll;
     // Where the layer sound picker returns after a pick (null = the Layers sheet).
     private Runnable afterLayerPick;
+
+    // ---- Session: live/recorded pad workspace (chord pads + drum pads) ----
+    // Left = chord pads driving a background loop, right = 8 drum pads with
+    // their own volumes. Keys are played from a MIDI keyboard only.
+    private static final int SESSION_DRUM_PADS = 8;
+    private static final String[] SESSION_DRUM_NAMES =
+            {"Kick", "Clap", "Hihat", "Snare", "Tom", "SFX Rise", "Crash", "Roll Kick"};
+    private static final int[] SESSION_DRUM_NOTES = {36, 39, 42, 38, 45, 55, 49, 35};
+    private boolean onSession;
+    private final float[] sessionDrumVol = new float[SESSION_DRUM_PADS];
+    private int sessionChordMode;      // 0 = latch/sustain, 1 = looping pattern
+    private int sessionActiveChord = -1;   // chord pad currently sounding (-1 = none)
+    private int[] sessionChordNotes;       // notes currently held by that chord
+    private int sessionBpm = 100;
+    private Runnable sessionChordLoop;     // rhythmic backing pattern ticker
+    private int sessionLoopStep;
+    private TextView[] sessionChordPads;
+    private TextView sessionModePill, sessionLoopPill, sessionRecPill;
+    // Event-pattern loop: records pad/chord hits and replays them in sync.
+    private static final int SESSION_LOOP_BARS = 2;
+    private final java.util.ArrayList<int[]> sessionEvents = new java.util.ArrayList<>();
+    private boolean sessionLoopRec, sessionLoopPlaying;
+    private long sessionLoopStart;
+    private Runnable sessionLoopPlayer;
+    private int sessionPlayIdx;
     private boolean onFullPads;
     private boolean padsKitMode;   // full pads: false = grid pads, true = drawn kit
     private boolean kitEditMode;   // Kit Mode editor: add / move / resize / remove pieces
@@ -1014,6 +1039,10 @@ public final class MainActivity extends Activity {
         }
         if (onTunerScreen) {
             exitTuner();
+            return;
+        }
+        if (onSession) {
+            closeSession();
             return;
         }
         if (onFullKeyboard) {
@@ -3634,6 +3663,437 @@ public final class MainActivity extends Activity {
         showFullPiano();
     }
 
+    // ================= SESSION =================
+    // A live / recorded pad workspace: chord pads (left) drive a background
+    // loop, 8 drum pads (right) sit above their own volume faders, and the
+    // keys are played from a MIDI keyboard using a chosen sound (SF2 import
+    // supported through the external SoundFont folder).
+    private void showSession() {
+        onSession = true;
+        onFullPiano = false;
+        ensurePianoEngine();
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) {
+            if (sessionDrumVol[i] <= 0f) {
+                sessionDrumVol[i] = prefs.getFloat("sess_dvol" + i, 0.8f);
+            }
+        }
+        sessionBpm = prefs.getInt("sess_bpm", metronomeBpm > 0 ? metronomeBpm : 100);
+        sessionChordMode = prefs.getInt("sess_chord_mode", 0);
+
+        LinearLayout screen = new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.setPadding(dp(8), dp(6), dp(8), dp(6));
+        screen.addView(buildSessionBar(), matchWrap());
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.HORIZONTAL);
+
+        // --- LEFT: chord pads (background loop) ---
+        LinearLayout chords = stagePanel("CHORDS · BACKGROUND LOOP", COLOR_PURPLE);
+        chords.addView(buildSessionChordGrid(), new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.MATCH_PARENT, 3.6f);
+        body.addView(chords, cLp);
+
+        // --- RIGHT: drum pads over their volume faders ---
+        LinearLayout right = new LinearLayout(this);
+        right.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout pads = stagePanel("DRUM PADS", COLOR_AMBER);
+        pads.addView(buildSessionDrumGrid(), new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
+        right.addView(pads, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1.35f));
+        LinearLayout vols = stagePanel("DRUM PAD VOLUME", COLOR_AMBER);
+        vols.addView(buildSessionDrumVolumes(), matchWrap());
+        right.addView(vols, topMargin(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), 8));
+        LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.MATCH_PARENT, 6.4f);
+        rLp.leftMargin = dp(8);
+        body.addView(right, rLp);
+
+        screen.addView(body, topMargin(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), 6));
+        enablePadInsets(screen, screen);
+        paintStage(screen);
+        setContentView(screen);
+    }
+
+    private View buildSessionBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.addView(backArrowButton(this::closeSession),
+                new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+        LinearLayout pills = new LinearLayout(this);
+        pills.setOrientation(LinearLayout.HORIZONTAL);
+        pills.setGravity(Gravity.CENTER_VERTICAL);
+
+        // Chord pad behaviour: latch a sustained chord, or run a looping pattern.
+        sessionModePill = transportPill(sessionChordMode == 0 ? "◉ Latch" : "↻ Loop Pattern");
+        styleTogglePill(sessionModePill, sessionChordMode == 1);
+        sessionModePill.setOnClickListener(v -> {
+            stopSessionChord();
+            sessionChordMode = sessionChordMode == 0 ? 1 : 0;
+            prefs.edit().putInt("sess_chord_mode", sessionChordMode).apply();
+            sessionModePill.setText(sessionChordMode == 0 ? "◉ Latch" : "↻ Loop Pattern");
+            styleTogglePill(sessionModePill, sessionChordMode == 1);
+        });
+
+        final TextView tempo = transportPill("♩ " + sessionBpm);
+        tempo.setOnClickListener(v -> sessionTempoDialog(tempo));
+
+        // Pattern loop: records pad/chord hits, then replays them in sync.
+        sessionLoopPill = transportPill("⟳ Loop Rec");
+        styleTogglePill(sessionLoopPill, false);
+        sessionLoopPill.setOnClickListener(v -> toggleSessionLoop());
+
+        // Audio capture of everything you play, straight to a .wav.
+        sessionRecPill = transportPill("● REC");
+        styleTogglePill(sessionRecPill, recording());
+        sessionRecPill.setOnClickListener(v -> {
+            toggleRecording();
+            styleTogglePill(sessionRecPill, recording());
+        });
+
+        final TextView keys = transportPill("🎹 " + currentPreset.label + "  ▾");
+        keys.setOnClickListener(v -> pianoSoundPopup(false, this::showSession));
+
+        final TextView imp = transportPill("＋ SF2");
+        imp.setOnClickListener(v -> pickExternalSf2Folder());
+
+        java.util.List<View> play = java.util.Arrays.asList(sessionModePill, tempo);
+        java.util.List<View> rec = java.util.Arrays.asList(sessionLoopPill, sessionRecPill);
+        java.util.List<View> snd = java.util.Arrays.asList(keys, imp);
+        addPillCluster(pills, "CHORDS", play, false);
+        addPillCluster(pills, "RECORD", rec, true);
+        addPillCluster(pills, "KEYS · MIDI", snd, true);
+
+        HorizontalScrollView sc = new HorizontalScrollView(this);
+        sc.setHorizontalScrollBarEnabled(false);
+        sc.addView(pills);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        lp.leftMargin = dp(8);
+        bar.addView(sc, lp);
+        return bar;
+    }
+
+    // Chord pads: tap to play, long-press to change the chord. The grid uses the
+    // same chord slots as Chord Mode, so songs/presets stay shared.
+    private View buildSessionChordGrid() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        sessionChordPads = new TextView[chordSlotCount];
+        int perRow = 2;
+        LinearLayout row = null;
+        for (int i = 0; i < chordSlotCount; i++) {
+            if (i % perRow == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                col.addView(row, topMargin(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), i == 0 ? 0 : 6));
+            }
+            final int slot = i;
+            TextView pad = new TextView(this);
+            pad.setText(chordName(chordRoot[i], chordType[i], chordBass[i]));
+            pad.setTextColor(COLOR_TEXT);
+            pad.setTextSize(15);
+            pad.setGravity(Gravity.CENTER);
+            pad.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            pad.setBackground(moduleBackground(COLOR_SURFACE_RAISED, COLOR_BORDER, COLOR_PURPLE, true));
+            pad.setClickable(true);
+            pad.setOnClickListener(v -> triggerSessionChord(slot));
+            pad.setOnLongClickListener(v -> { chordPickerDialog(slot); return true; });
+            sessionChordPads[i] = pad;
+            LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+            plp.leftMargin = (i % perRow == 0) ? 0 : dp(6);
+            row.addView(pad, plp);
+        }
+        return col;
+    }
+
+    private View buildSessionDrumGrid() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row = null;
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) {
+            if (i % 4 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                col.addView(row, topMargin(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f), i == 0 ? 0 : 6));
+            }
+            final int idx = i;
+            TextView pad = new TextView(this);
+            pad.setText(SESSION_DRUM_NAMES[i]);
+            pad.setTextColor(COLOR_TEXT);
+            pad.setTextSize(13);
+            pad.setGravity(Gravity.CENTER);
+            pad.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            pad.setBackground(moduleBackground(COLOR_SURFACE_RAISED, COLOR_BORDER, COLOR_AMBER, true));
+            pad.setClickable(true);
+            pad.setOnClickListener(v -> hitSessionDrum(idx, true));
+            LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1f);
+            plp.leftMargin = (i % 4 == 0) ? 0 : dp(6);
+            row.addView(pad, plp);
+        }
+        return col;
+    }
+
+    // One horizontal fader per drum pad, in the same order as the pads above.
+    private View buildSessionDrumVolumes() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout row = null;
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) {
+            if (i % 2 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                col.addView(row, topMargin(matchWrap(), i == 0 ? 0 : 4));
+            }
+            final int idx = i;
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            TextView lbl = new TextView(this);
+            lbl.setText(SESSION_DRUM_NAMES[i]);
+            lbl.setTextColor(COLOR_MUTED);
+            lbl.setTextSize(10);
+            lbl.setSingleLine(true);
+            lbl.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            cell.addView(lbl, matchWrap());
+            SeekBar sb = new SeekBar(this);
+            sb.setMax(100);
+            sb.setProgress(Math.round(sessionDrumVol[i] * 100));
+            sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
+                    sessionDrumVol[idx] = p / 100f;
+                }
+                public void onStartTrackingTouch(SeekBar s) { }
+                public void onStopTrackingTouch(SeekBar s) {
+                    prefs.edit().putFloat("sess_dvol" + idx, sessionDrumVol[idx]).apply();
+                    hitSessionDrum(idx, false);   // audition at the new level
+                }
+            });
+            cell.addView(sb, matchWrap());
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+            clp.leftMargin = (i % 2 == 0) ? 0 : dp(10);
+            row.addView(cell, clp);
+        }
+        return col;
+    }
+
+    private void hitSessionDrum(int idx, boolean record) {
+        if (idx < 0 || idx >= SESSION_DRUM_PADS) return;
+        engine.noteOn(SESSION_DRUM_NOTES[idx], Math.max(0.05f, sessionDrumVol[idx]));
+        if (record) recordSessionEvent(0, idx);
+    }
+
+    // Tap a chord pad: latch it as a sustained chord, or start a looping
+    // rhythmic backing on it. Tapping the sounding pad again stops it.
+    private void triggerSessionChord(int slot) {
+        if (slot < 0 || slot >= chordSlotCount) return;
+        boolean same = sessionActiveChord == slot;
+        stopSessionChord();
+        if (same) return;
+        sessionActiveChord = slot;
+        recordSessionEvent(1, slot);
+        if (sessionChordMode == 0) {
+            sessionChordNotes = chordVoicing(chordRoot[slot], chordType[slot], chordBass[slot]);
+            for (int n : sessionChordNotes) engine.noteOn(n, 0.7f);
+        } else {
+            sessionLoopStep = 0;
+            startSessionChordLoop(slot);
+        }
+        refreshSessionChordPads();
+    }
+
+    // The looping backing: an eighth-note pattern that alternates the chord's
+    // bass with its upper voices, re-triggered in time with the tempo.
+    private void startSessionChordLoop(final int slot) {
+        final int[] v = chordVoicing(chordRoot[slot], chordType[slot], chordBass[slot]);
+        final long stepMs = Math.max(60L, Math.round(30000.0 / Math.max(40, sessionBpm)));
+        sessionChordLoop = new Runnable() {
+            @Override public void run() {
+                if (!onSession || sessionActiveChord != slot) return;
+                int s = sessionLoopStep % 4;
+                if (s == 0) {
+                    engine.noteOn(v[0], 0.75f);                       // bass
+                } else {
+                    for (int i = 1; i < v.length && i <= 3; i++) {    // upper voices
+                        engine.noteOn(v[i], s == 2 ? 0.55f : 0.4f);
+                    }
+                }
+                sessionLoopStep++;
+                handler.postDelayed(this, stepMs);
+            }
+        };
+        handler.post(sessionChordLoop);
+    }
+
+    private void stopSessionChord() {
+        if (sessionChordLoop != null) {
+            handler.removeCallbacks(sessionChordLoop);
+            sessionChordLoop = null;
+        }
+        if (sessionChordNotes != null) {
+            for (int n : sessionChordNotes) engine.noteOff(n);
+            sessionChordNotes = null;
+        }
+        if (sessionActiveChord >= 0) engine.allNotesOff();
+        sessionActiveChord = -1;
+        refreshSessionChordPads();
+    }
+
+    private void refreshSessionChordPads() {
+        if (sessionChordPads == null) return;
+        for (int i = 0; i < sessionChordPads.length; i++) {
+            TextView p = sessionChordPads[i];
+            if (p == null) continue;
+            boolean on = i == sessionActiveChord;
+            p.setText(chordName(chordRoot[i], chordType[i], chordBass[i]));
+            p.setTextColor(on ? COLOR_TEXT : COLOR_MUTED);
+            p.setBackground(moduleBackground(on ? darken(COLOR_PURPLE) : COLOR_SURFACE_RAISED,
+                    on ? COLOR_PURPLE : COLOR_BORDER, COLOR_PURPLE, true));
+        }
+    }
+
+    // ---- Pattern loop: capture pad hits, then replay them on a bar loop ----
+    private long sessionLoopLenMs() {
+        return Math.round(SESSION_LOOP_BARS * 4 * 60000.0 / Math.max(40, sessionBpm));
+    }
+
+    private void recordSessionEvent(int type, int index) {
+        if (!sessionLoopRec) return;
+        long t = System.currentTimeMillis() - sessionLoopStart;
+        long len = sessionLoopLenMs();
+        if (t < 0 || t > len) return;
+        sessionEvents.add(new int[]{type, index, (int) t});
+    }
+
+    // Loop button cycles: arm recording → play the captured loop → clear.
+    private void toggleSessionLoop() {
+        if (sessionLoopRec) {                       // finish recording, start playing
+            sessionLoopRec = false;
+            if (sessionEvents.isEmpty()) {
+                styleTogglePill(sessionLoopPill, false);
+                sessionLoopPill.setText("⟳ Loop Rec");
+                return;
+            }
+            java.util.Collections.sort(sessionEvents, (a, b) -> a[2] - b[2]);
+            startSessionLoopPlayback();
+        } else if (sessionLoopPlaying) {            // stop and clear
+            stopSessionLoopPlayback();
+            sessionEvents.clear();
+            sessionLoopPill.setText("⟳ Loop Rec");
+            styleTogglePill(sessionLoopPill, false);
+        } else {                                    // arm a fresh take
+            sessionEvents.clear();
+            sessionLoopRec = true;
+            sessionLoopStart = System.currentTimeMillis();
+            sessionLoopPill.setText("● Recording…");
+            styleTogglePill(sessionLoopPill, true);
+            handler.postDelayed(() -> { if (sessionLoopRec) toggleSessionLoop(); },
+                    sessionLoopLenMs());
+        }
+    }
+
+    private void startSessionLoopPlayback() {
+        sessionLoopPlaying = true;
+        sessionPlayIdx = 0;
+        sessionLoopStart = System.currentTimeMillis();
+        sessionLoopPill.setText("▶ Loop Playing");
+        styleTogglePill(sessionLoopPill, true);
+        sessionLoopPlayer = new Runnable() {
+            @Override public void run() {
+                if (!sessionLoopPlaying || !onSession) return;
+                long t = System.currentTimeMillis() - sessionLoopStart;
+                long len = sessionLoopLenMs();
+                while (sessionPlayIdx < sessionEvents.size()
+                        && sessionEvents.get(sessionPlayIdx)[2] <= t) {
+                    int[] e = sessionEvents.get(sessionPlayIdx++);
+                    if (e[0] == 0) hitSessionDrum(e[1], false);
+                    else triggerSessionChordSilentRecord(e[1]);
+                }
+                if (t >= len) {                     // wrap to the top of the loop
+                    sessionLoopStart = System.currentTimeMillis();
+                    sessionPlayIdx = 0;
+                }
+                handler.postDelayed(this, 15);
+            }
+        };
+        handler.post(sessionLoopPlayer);
+    }
+
+    // Replay a chord hit without re-recording it into the pattern.
+    private void triggerSessionChordSilentRecord(int slot) {
+        boolean was = sessionLoopRec;
+        sessionLoopRec = false;
+        triggerSessionChord(slot);
+        sessionLoopRec = was;
+    }
+
+    private void stopSessionLoopPlayback() {
+        sessionLoopPlaying = false;
+        if (sessionLoopPlayer != null) handler.removeCallbacks(sessionLoopPlayer);
+        sessionLoopPlayer = null;
+    }
+
+    private void sessionTempoDialog(final TextView pill) {
+        final Dialog dialog = new Dialog(this);
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(dialogSheet());
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(16), dp(16), dp(14));
+        TextView title = new TextView(this);
+        title.setText("Session Tempo");
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(18);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        content.addView(title, matchWrap());
+        final TextView lbl = new TextView(this);
+        lbl.setTextColor(COLOR_TEXT);
+        lbl.setTextSize(14);
+        lbl.setText(sessionBpm + " BPM");
+        content.addView(lbl, topMargin(matchWrap(), 10));
+        SeekBar sb = new SeekBar(this);
+        sb.setMax(200);
+        sb.setProgress(Math.max(0, sessionBpm - 40));
+        sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar s, int p, boolean fromUser) {
+                sessionBpm = 40 + p;
+                lbl.setText(sessionBpm + " BPM");
+                if (pill != null) pill.setText("♩ " + sessionBpm);
+            }
+            public void onStartTrackingTouch(SeekBar s) { }
+            public void onStopTrackingTouch(SeekBar s) {
+                prefs.edit().putInt("sess_bpm", sessionBpm).apply();
+            }
+        });
+        content.addView(sb, topMargin(matchWrap(), 4));
+        dialog.setContentView(content);
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(dialogWidth(0.8f, 420),
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+        }
+        dialog.show();
+    }
+
+    private void closeSession() {
+        onSession = false;
+        stopSessionChord();
+        stopSessionLoopPlayback();
+        sessionLoopRec = false;
+        sessionChordPads = null;
+        engine.allNotesOff();
+        showInstrumentScreen();
+    }
+
     private Button drumActionButton(String text, Runnable onClick) {
         Button b = new Button(this);
         b.setAllCaps(false);
@@ -4477,6 +4937,7 @@ public final class MainActivity extends Activity {
             content.addView(menuItem("🎹  Play Keys (zoom, landscape)", () -> { dialog.dismiss(); showFullPiano(); }), topMargin(matchWrap(), 10));
             content.addView(menuItem("⛶  Full Keys (MIDI view)", () -> { dialog.dismiss(); showFullKeyboard(); }), topMargin(matchWrap(), 8));
             content.addView(menuItem("🎼  Chord Mode", () -> { dialog.dismiss(); showChordMode(); }), topMargin(matchWrap(), 8));
+            content.addView(menuItem("🎛  Session · pads + chord loop", () -> { dialog.dismiss(); showSession(); }), topMargin(matchWrap(), 8));
             content.addView(menuItem("⧉  Layers · blend sounds", () -> { dialog.dismiss(); layersDialog(); }), topMargin(matchWrap(), 8));
             content.addView(menuItem("♫  MIDI Player", () -> { dialog.dismiss(); midiPlayerDialog(); }), topMargin(matchWrap(), 8));
             if (midiOutputPorts.size() > 1) {

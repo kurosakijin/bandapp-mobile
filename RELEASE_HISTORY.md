@@ -1,5 +1,17 @@
 # Release History
 
+## 1.1.104 (version code 375) - 2026-08-04
+- Added Session, a live or recorded pad workspace opened from the piano overflow
+  menu, separate from the existing layer channel-strip Mixer.
+- Chord pads drive the shared Chord Mode slots and can either latch a sustained
+  chord or run a tempo-synced looping backing pattern; long-press edits a chord.
+- Eight named drum pads sit above one volume fader each, and releasing a fader
+  auditions that pad at its new level.
+- A three-state loop control records two bars of pad and chord hits, replays the
+  pattern in sync, then clears it.
+- Added audio capture to `.wav`, a 40-240 BPM session tempo, MIDI-only keys with
+  a keyboard sound selector, and external SF2 folder import.
+
 ## 1.1.103 (version code 374) - 2026-07-29
 
 - Added a visible input-source selector directly to the tuner screen.

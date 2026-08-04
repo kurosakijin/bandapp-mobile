@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.103` / version code `374`
+- Current version: `1.1.104` / version code `375`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -20,6 +20,23 @@
 - SoundFont assets: `app/src/main/assets/`
 
 ## Implemented Product Behavior
+
+## Release 1.1.104 - Session Pad Workspace
+
+- Added Session, a live or recorded pad workspace opened from the piano overflow
+  menu. It is separate from the existing layer channel-strip Mixer.
+- Chord pads on the left play the shared Chord Mode slots. A pad can latch a
+  sustained chord or drive a tempo-synced looping backing pattern, selected by a
+  single mode control. Long-pressing a pad edits that chord.
+- Eight named drum pads on the right sit above one volume fader per pad, and
+  releasing a fader auditions that pad at its new level.
+- A three-state loop control records pad and chord hits for two bars, replays the
+  captured pattern in sync, and clears it on the next press.
+- Audio capture writes the performance to a `.wav` through the existing recorder.
+- Keys are played from a MIDI keyboard only. The bar selects the keyboard sound
+  and opens the external SoundFont folder import for user SF2 files.
+- Session tempo is adjustable from 40 to 240 BPM and persists, as do the eight
+  drum pad volumes and the chord pad mode.
 
 ## Release 1.1.103 - Tuner Input Routing
 
