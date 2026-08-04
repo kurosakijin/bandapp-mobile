@@ -533,6 +533,7 @@ public final class MainActivity extends Activity {
             {"Kick", "Clap", "Hihat", "Snare", "Tom", "SFX Rise", "Crash", "Roll Kick"};
     private static final int[] SESSION_DRUM_NOTES = {36, 39, 42, 38, 45, 55, 49, 35};
     private boolean onSession;
+    private boolean sessionFromLanding;   // entered from the landing card, not the ⋮ menu
     private final float[] sessionDrumVol = new float[SESSION_DRUM_PADS];
     private int sessionChordMode;      // 0 = latch/sustain, 1 = looping pattern
     private int sessionActiveChord = -1;   // chord pad currently sounding (-1 = none)
@@ -1242,7 +1243,8 @@ public final class MainActivity extends Activity {
 
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
-        View[] features = {buildLoopMixCard(), buildVocalsCard(), buildGuitarKeysCard()};
+        View[] features = {buildSessionCard(), buildLoopMixCard(), buildVocalsCard(),
+                buildGuitarKeysCard()};
         for (int i = 0; i < features.length; i++) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
@@ -4091,7 +4093,15 @@ public final class MainActivity extends Activity {
         sessionLoopRec = false;
         sessionChordPads = null;
         engine.allNotesOff();
-        showInstrumentScreen();
+        // Return where you came from: the landing card goes home, the ⋮ menu
+        // goes back to the piano screen.
+        if (sessionFromLanding) {
+            sessionFromLanding = false;
+            engine.stop();
+            showPicker();
+        } else {
+            showInstrumentScreen();
+        }
     }
 
     private Button drumActionButton(String text, Runnable onClick) {
@@ -4937,7 +4947,7 @@ public final class MainActivity extends Activity {
             content.addView(menuItem("🎹  Play Keys (zoom, landscape)", () -> { dialog.dismiss(); showFullPiano(); }), topMargin(matchWrap(), 10));
             content.addView(menuItem("⛶  Full Keys (MIDI view)", () -> { dialog.dismiss(); showFullKeyboard(); }), topMargin(matchWrap(), 8));
             content.addView(menuItem("🎼  Chord Mode", () -> { dialog.dismiss(); showChordMode(); }), topMargin(matchWrap(), 8));
-            content.addView(menuItem("🎛  Session · pads + chord loop", () -> { dialog.dismiss(); showSession(); }), topMargin(matchWrap(), 8));
+            content.addView(menuItem("🎛  Session · pads + chord loop", () -> { dialog.dismiss(); sessionFromLanding = false; showSession(); }), topMargin(matchWrap(), 8));
             content.addView(menuItem("⧉  Layers · blend sounds", () -> { dialog.dismiss(); layersDialog(); }), topMargin(matchWrap(), 8));
             content.addView(menuItem("♫  MIDI Player", () -> { dialog.dismiss(); midiPlayerDialog(); }), topMargin(matchWrap(), 8));
             if (midiOutputPorts.size() > 1) {
@@ -11193,6 +11203,53 @@ public final class MainActivity extends Activity {
     // ---- Loop Mix (loop station: harmonizer + vocals loop + 3 overdub loops) ----
 
     private static final int LOOP_PINK = Color.rgb(240, 110, 190);
+
+    // Landing card for Session: the chord/drum pad workspace. It plays through
+    // the piano engine, so entering it selects Piano first.
+    private View buildSessionCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(12), dp(12), dp(12), dp(12));
+        card.setBackground(landingButtonBackground(COLOR_PURPLE));
+        card.setClickable(true);
+        card.setOnClickListener(v -> launchFromLanding(card, () -> {
+            currentMode = InstrumentMode.PIANO;
+            sessionFromLanding = true;
+            showSession();
+        }));
+
+        LoopsIconView icon = new LoopsIconView(this, COLOR_PURPLE);
+        int sz = dpT(40, 54);
+        card.addView(icon, new LinearLayout.LayoutParams(sz, sz));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        TextView name = new TextView(this);
+        name.setText("Session");
+        name.setTextColor(COLOR_TEXT);
+        name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        name.setTextSize(17);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        text.addView(name, matchWrap());
+        TextView desc = new TextView(this);
+        desc.setText("Chord + drum pads");
+        desc.setTextColor(COLOR_MUTED);
+        desc.setTextSize(11);
+        desc.setMaxLines(2);
+        desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        text.addView(desc, topMargin(matchWrap(), 2));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        tlp.leftMargin = dp(12);
+        LinearLayout.LayoutParams badgeLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        badgeLp.topMargin = dp(4);
+        text.addView(betaBadge(), badgeLp);
+        card.addView(text, tlp);
+        return card;
+    }
 
     private View buildLoopMixCard() {
         LinearLayout card = new LinearLayout(this);

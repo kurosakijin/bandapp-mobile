@@ -1,5 +1,12 @@
 # Release History
 
+## 1.1.105 (version code 376) - 2026-08-04
+- Added a Session card to the landing page features row so the pad workspace is
+  reachable without first opening an instrument.
+- Opening Session from the landing page selects Piano, starts the engine, and
+  returns to the landing page on exit; the piano overflow entry still returns to
+  the piano screen.
+
 ## 1.1.104 (version code 375) - 2026-08-04
 - Added Session, a live or recorded pad workspace opened from the piano overflow
   menu, separate from the existing layer channel-strip Mixer.
