@@ -330,6 +330,7 @@ public final class MainActivity extends Activity {
     private static final int REQ_EXPORT_CHORDS = 4206;
     private static final int REQ_IMPORT_CHORDS = 4207;
     private static final int REQ_PICK_SF2_FOLDER = 4208;
+    private static final int REQ_PICK_SESSION_SFX_FOLDER = 4212;
     private boolean midiLoopOn = false;
     private TextView midiProgressText;
     private TextView midiPlayPauseBtn;
@@ -382,6 +383,12 @@ public final class MainActivity extends Activity {
     private final java.util.concurrent.ExecutorService namLoader =
             java.util.concurrent.Executors.newSingleThreadExecutor();
     private String externalSf2TreeUri;
+    private String externalSessionSfxTreeUri;
+    private final java.util.List<ExternalSfxFile> externalSessionSfxFiles =
+            new java.util.ArrayList<>();
+    private int externalSessionSfxScanToken;
+    private boolean externalSessionSfxScanning;
+    private int pendingSessionSfxPad = -1;
     private String activeExternalMainUri;
     private String activeExternalDualUri;
     private int activeExternalMainPreset;
@@ -544,6 +551,30 @@ public final class MainActivity extends Activity {
     private static final int SESSION_DRUM_COLS = 4;     // drum pads and their faders are 4 wide
     private static final String[] SESSION_DRUM_NAMES =
             {"Kick", "Clap", "Hihat", "Snare", "Tom", "SFX Rise", "Crash", "Roll Kick"};
+    private static final String[] SESSION_SFX_NAMES =
+            {"Impact", "Riser", "Downlifter", "Laser", "Sub Drop", "Glitch Fill",
+                    "Air Whoosh", "Drop Alarm"};
+    private static final String[] SESSION_SFX_ASSETS = {
+            "session_sfx/01_festival_impact.wav",
+            "session_sfx/02_noise_riser.wav",
+            "session_sfx/03_downlifter.wav",
+            "session_sfx/04_laser_sweep.wav",
+            "session_sfx/05_sub_drop.wav",
+            "session_sfx/06_glitch_fill.wav",
+            "session_sfx/07_air_whoosh.wav",
+            "session_sfx/08_drop_alarm.wav"};
+    private static final String[] SESSION_TRANSITION_NAMES =
+            {"Reverse Cymbal", "Tape Stop", "Bass Cannon", "Robot Stutter",
+                    "Power Up", "Siren Blast", "Echo Clap", "Rewind Spin"};
+    private static final String[] SESSION_TRANSITION_ASSETS = {
+            "session_sfx_2/01_reverse_cymbal.wav",
+            "session_sfx_2/02_tape_stop.wav",
+            "session_sfx_2/03_bass_cannon.wav",
+            "session_sfx_2/04_robot_stutter.wav",
+            "session_sfx_2/05_power_up.wav",
+            "session_sfx_2/06_siren_blast.wav",
+            "session_sfx_2/07_echo_clap.wav",
+            "session_sfx_2/08_rewind_spin.wav"};
     private static final int[] SESSION_DRUM_NOTES = {36, 39, 42, 38, 45, 55, 49, 35};
     // Each pad carries its own colour, as on the reference layout.
     private static final int[] SESSION_DRUM_COLORS = {
@@ -559,6 +590,7 @@ public final class MainActivity extends Activity {
     private boolean sessionFromLanding;   // entered from the landing card, not the ⋮ menu
     private boolean sessionEngineReady;   // engine is running in loop-mix mode for Session
     private final float[] sessionDrumVol = new float[SESSION_DRUM_PADS];
+    private int sessionPadBank;     // 0 drum/imported, 1 festival, 2 transition
     private int sessionChordMode;      // 0 = latch/sustain, 1 = looping pattern
     private int sessionActiveChord = -1;   // chord pad currently sounding (-1 = none)
     private int[] sessionChordNotes;       // notes currently held by that chord
@@ -573,6 +605,7 @@ public final class MainActivity extends Activity {
     private static final int SESSION_SAMPLE_SLOT0 = 6;
     private static final int REQ_PICK_PAD_SAMPLE = 4211;
     private final boolean[] sessionPadHasSample = new boolean[SESSION_DRUM_PADS];
+    private final boolean[] sessionPadSampleLoading = new boolean[SESSION_DRUM_PADS];
     private int sessionSampleTarget = -1;
     // MIDI pad sync (MPK-style controllers): the hardware note bound to each app
     // pad, -1 = unbound. sessionSyncArm is the pad waiting to learn a note.
@@ -588,6 +621,7 @@ public final class MainActivity extends Activity {
     private final int[] sessChordBass = new int[SESSION_CHORD_PADS];
     // Event-pattern loop: records pad/chord hits and replays them in sync.
     private static final int SESSION_LOOP_BARS = 2;
+    private static final int SESSION_LOOP_TICKS = SESSION_LOOP_BARS * 4 * 960;
     private final java.util.ArrayList<int[]> sessionEvents = new java.util.ArrayList<>();
     private boolean sessionLoopRec, sessionLoopPlaying;
     private long sessionLoopStart;
@@ -786,6 +820,7 @@ public final class MainActivity extends Activity {
         midiManager = (MidiManager) getSystemService(Context.MIDI_SERVICE);
         prefs = getSharedPreferences("instrumental", Context.MODE_PRIVATE);
         externalSf2TreeUri = prefs.getString("external_sf2_tree", null);
+        externalSessionSfxTreeUri = prefs.getString("session_sfx_tree", null);
         activeExternalMainUri = prefs.getString("external_sf2_main", null);
         activeExternalDualUri = prefs.getString("external_sf2_dual", null);
         activeExternalMainPreset = prefs.getInt("external_sf2_main_preset", 0);
@@ -996,6 +1031,7 @@ public final class MainActivity extends Activity {
         initDrumPieces();
         loadSoundFontAsync();
         scanExternalSf2Folder();
+        scanExternalSessionSfxFolder();
 
         // If the activity was recreated (e.g. returning after an app switch) the native
         // engine may still be running; reset to a clean stopped state for the picker.
@@ -3734,8 +3770,11 @@ public final class MainActivity extends Activity {
         }
         sessionBpm = prefs.getInt("sess_bpm", metronomeBpm > 0 ? metronomeBpm : 100);
         sessionChordMode = prefs.getInt("sess_chord_mode", 0);
+        sessionPadBank = prefs.getInt("sess_pad_bank",
+                prefs.getBoolean("sess_sfx_bank", false) ? 1 : 0);
         sessionKey = prefs.getInt("sess_key", 0);
         loadSessionChords();
+        restoreSessionPadSamples();
         for (int i = 0; i < SESSION_DRUM_PADS; i++) {
             sessionPadMidi[i] = prefs.getInt("sess_pad_midi" + i, -1);
             sessionPadMidiCh[i] = prefs.getInt("sess_pad_midich" + i, -1);
@@ -3783,7 +3822,8 @@ public final class MainActivity extends Activity {
         sessionPadTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         head.addView(sessionPadTitle, matchWrap());
         TextView kitName = new TextView(this);
-        kitName.setText(loopKitLabel());
+        kitName.setText(sessionPadBank == 1 ? "Festival SFX"
+                : sessionPadBank == 2 ? "Transition FX" : loopKitLabel());
         kitName.setTextColor(SESSION_INK_DIM);
         kitName.setTextSize(11);
         head.addView(kitName, topMargin(matchWrap(), 2));
@@ -3903,6 +3943,26 @@ public final class MainActivity extends Activity {
         final TextView imp = transportPill("＋ SF2");
         imp.setOnClickListener(v -> pickExternalSf2Folder());
 
+        final TextView sfxLibrary = transportPill(sessionSfxLibraryLabel());
+        styleTogglePill(sfxLibrary, externalSessionSfxTreeUri != null);
+        sfxLibrary.setOnClickListener(v -> {
+            if (externalSessionSfxTreeUri == null) pickExternalSessionSfxFolder();
+            else showSessionSfxPicker(-1);
+        });
+        sfxLibrary.setOnLongClickListener(v -> {
+            pickExternalSessionSfxFolder();
+            return true;
+        });
+
+        final TextView padBank = transportPill(sessionPadBankLabel());
+        styleTogglePill(padBank, sessionPadBank != 0);
+        padBank.setOnClickListener(v -> {
+            sessionPadBank = (sessionPadBank + 1) % 3;
+            prefs.edit().putInt("sess_pad_bank", sessionPadBank)
+                    .remove("sess_sfx_bank").apply();
+            showSession();
+        });
+
         // Bind a pad-equipped controller (MPK Mini MK3 and friends): arm, then
         // strike each hardware pad in turn to map it onto the app's pads.
         sessionSyncPill = transportPill("⇄ Sync Pads");
@@ -3919,7 +3979,8 @@ public final class MainActivity extends Activity {
 
         java.util.List<View> play = java.util.Arrays.asList(sessionModePill, tempo);
         java.util.List<View> rec = java.util.Arrays.asList(sessionLoopPill, sessionRecPill);
-        java.util.List<View> snd = java.util.Arrays.asList(keys, imp, sessionSyncPill);
+        java.util.List<View> snd = java.util.Arrays.asList(
+                keys, imp, sfxLibrary, padBank, sessionSyncPill);
         addPillCluster(pills, "CHORDS", play, false);
         addPillCluster(pills, "RECORD", rec, true);
         addPillCluster(pills, "KEYS · MIDI", snd, true);
@@ -4332,15 +4393,27 @@ public final class MainActivity extends Activity {
 
     // Pads show their imported sample's name once one is assigned.
     private String sessionDrumLabel(int idx) {
+        if (sessionPadBank == 1) return SESSION_SFX_NAMES[idx];
+        if (sessionPadBank == 2) return SESSION_TRANSITION_NAMES[idx];
         String custom = prefs.getString("sess_pad_name" + idx, null);
         return custom != null ? custom : SESSION_DRUM_NAMES[idx];
+    }
+
+    private String sessionPadBankLabel() {
+        return sessionPadBank == 1 ? "FX: Festival"
+                : sessionPadBank == 2 ? "FX: Transition" : "FX: Drum Kit";
     }
 
     private void hitSessionDrum(int idx, boolean record) {
         if (idx < 0 || idx >= SESSION_DRUM_PADS) return;
         // An imported sample replaces the kit note for that pad.
-        if (sessionPadHasSample[idx]) {
-            engine.triggerSwell(SESSION_SAMPLE_SLOT0 + idx);
+        if (sessionPadBank > 0) {
+            int bankOffset = sessionPadBank * SESSION_DRUM_PADS;
+            engine.triggerSessionSample(bankOffset + idx, sessionDrumVol[idx]);
+        } else if (sessionPadHasSample[idx]) {
+            engine.triggerSessionSample(idx, sessionDrumVol[idx]);
+        } else if (sessionPadSampleLoading[idx]) {
+            return;
         } else {
             engine.noteOn(SESSION_DRUM_NOTES[idx], Math.max(0.05f, sessionDrumVol[idx]));
         }
@@ -4362,12 +4435,24 @@ public final class MainActivity extends Activity {
         title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         content.addView(title, matchWrap());
         TextView sub = new TextView(this);
-        sub.setText(sessionPadHasSample[idx]
-                ? "Playing an imported sample."
-                : "Playing the drum kit sound.");
+        sub.setText(sessionPadSampleLoading[idx]
+                ? "Loading the imported sample…"
+                : sessionPadHasSample[idx]
+                        ? "Playing an imported sample."
+                        : "Playing the drum kit sound.");
         sub.setTextColor(COLOR_MUTED);
         sub.setTextSize(12);
         content.addView(sub, topMargin(matchWrap(), 4));
+
+        content.addView(menuItem("Choose from SFX library", () -> {
+            dialog.dismiss();
+            if (externalSessionSfxTreeUri == null) {
+                pendingSessionSfxPad = idx;
+                pickExternalSessionSfxFolder();
+            } else {
+                showSessionSfxPicker(idx);
+            }
+        }), topMargin(matchWrap(), 12));
 
         content.addView(menuItem("＋  Import audio (WAV / OGG / MP3)…", () -> {
             dialog.dismiss();
@@ -4375,17 +4460,21 @@ public final class MainActivity extends Activity {
             Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("audio/*");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
             try {
                 startActivityForResult(i, REQ_PICK_PAD_SAMPLE);
             } catch (RuntimeException e) {
                 Toast.makeText(this, "No file picker available", Toast.LENGTH_SHORT).show();
             }
-        }), topMargin(matchWrap(), 12));
+        }), topMargin(matchWrap(), 8));
 
         if (sessionPadHasSample[idx]) {
             content.addView(menuItem("✕  Clear · back to kit sound", () -> {
                 sessionPadHasSample[idx] = false;
-                prefs.edit().remove("sess_pad_name" + idx).apply();
+                sessionPadSampleLoading[idx] = false;
+                prefs.edit().remove("sess_pad_name" + idx)
+                        .remove("sess_pad_uri" + idx).apply();
                 dialog.dismiss();
                 showSession();
             }), topMargin(matchWrap(), 8));
@@ -4398,9 +4487,43 @@ public final class MainActivity extends Activity {
         dialog.show();
     }
 
-    // Decode any Android-supported audio file (WAV, OGG, MP3, M4A) to interleaved
-    // float PCM and hand it to the one-shot sampler slot for this pad.
-    private void loadPadSampleFromUri(int idx, Uri uri) {
+    private void restoreSessionPadSamples() {
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) {
+            String saved = prefs.getString("sess_pad_uri" + i, null);
+            if (saved == null || sessionPadHasSample[i] || sessionPadSampleLoading[i]) continue;
+            loadPadSampleAsync(i, Uri.parse(saved), false);
+        }
+    }
+
+    private void loadPadSampleAsync(final int idx, final Uri uri, final boolean announce) {
+        if (idx < 0 || idx >= SESSION_DRUM_PADS || sessionPadSampleLoading[idx]) return;
+        sessionPadSampleLoading[idx] = true;
+        new Thread(() -> {
+            String error = null;
+            try {
+                decodePadSample(idx, uri);
+            } catch (Exception e) {
+                error = "Couldn't decode that audio file";
+            }
+            final String failure = error;
+            handler.post(() -> {
+                sessionPadSampleLoading[idx] = false;
+                sessionPadHasSample[idx] = failure == null;
+                if (failure != null) {
+                    prefs.edit().remove("sess_pad_uri" + idx)
+                            .remove("sess_pad_name" + idx).apply();
+                    Toast.makeText(this, failure, Toast.LENGTH_LONG).show();
+                } else if (announce) {
+                    Toast.makeText(this, "Loaded onto " + sessionDrumLabel(idx),
+                            Toast.LENGTH_SHORT).show();
+                }
+            });
+        }, "session-sample-" + idx).start();
+    }
+
+    // Decode any Android-supported audio file to interleaved float PCM off the
+    // UI thread and hand it to the clean Session one-shot slot.
+    private void decodePadSample(int idx, Uri uri) throws Exception {
         android.media.MediaExtractor ex = new android.media.MediaExtractor();
         android.media.MediaCodec codec = null;
         try {
@@ -4412,10 +4535,13 @@ public final class MainActivity extends Activity {
                 String mime = f.getString(android.media.MediaFormat.KEY_MIME);
                 if (mime != null && mime.startsWith("audio/")) { track = t; fmt = f; break; }
             }
-            if (track < 0 || fmt == null) { Toast.makeText(this, "No audio track", Toast.LENGTH_SHORT).show(); return; }
+            if (track < 0 || fmt == null) throw new java.io.IOException("No audio track");
             ex.selectTrack(track);
             int rate = fmt.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE);
             int channels = fmt.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT);
+            fmt.setInteger(android.media.MediaFormat.KEY_PCM_ENCODING,
+                    android.media.AudioFormat.ENCODING_PCM_16BIT);
+            int pcmEncoding = android.media.AudioFormat.ENCODING_PCM_16BIT;
             codec = android.media.MediaCodec.createDecoderByType(
                     fmt.getString(android.media.MediaFormat.KEY_MIME));
             codec.configure(fmt, null, null, 0);
@@ -4458,24 +4584,27 @@ public final class MainActivity extends Activity {
                     android.media.MediaFormat of = codec.getOutputFormat();
                     rate = of.getInteger(android.media.MediaFormat.KEY_SAMPLE_RATE);
                     channels = of.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT);
+                    if (of.containsKey(android.media.MediaFormat.KEY_PCM_ENCODING)) {
+                        pcmEncoding = of.getInteger(android.media.MediaFormat.KEY_PCM_ENCODING);
+                    }
                 }
             }
             byte[] bytes = pcm.toByteArray();
-            int frames = bytes.length / (2 * Math.max(1, channels));
-            if (frames <= 0) { Toast.makeText(this, "Empty audio", Toast.LENGTH_SHORT).show(); return; }
+            int bytesPerSample = pcmEncoding == android.media.AudioFormat.ENCODING_PCM_FLOAT ? 4 : 2;
+            int frames = bytes.length / (bytesPerSample * Math.max(1, channels));
+            if (frames <= 0) throw new java.io.IOException("Empty audio");
             // Cap very long files so a pad stays a one-shot, not a track.
             int maxFrames = rate * 12;
             if (frames > maxFrames) frames = maxFrames;
             float[] pcmF = new float[frames * channels];
             java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(bytes)
                     .order(java.nio.ByteOrder.LITTLE_ENDIAN);
-            for (int i = 0; i < pcmF.length; i++) pcmF[i] = bb.getShort() / 32768f;
+            for (int i = 0; i < pcmF.length; i++) {
+                pcmF[i] = pcmEncoding == android.media.AudioFormat.ENCODING_PCM_FLOAT
+                        ? Math.max(-1f, Math.min(1f, bb.getFloat()))
+                        : bb.getShort() / 32768f;
+            }
             engine.loadSwellSample(SESSION_SAMPLE_SLOT0 + idx, pcmF, frames, channels, rate);
-            sessionPadHasSample[idx] = true;
-            prefs.edit().putString("sess_pad_name" + idx, displayNameFor(uri)).apply();
-            Toast.makeText(this, "Loaded onto " + sessionDrumLabel(idx), Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "Couldn't decode that audio file", Toast.LENGTH_LONG).show();
         } finally {
             if (codec != null) { try { codec.stop(); codec.release(); } catch (RuntimeException ignore) { } }
             ex.release();
@@ -4501,10 +4630,20 @@ public final class MainActivity extends Activity {
     private void triggerSessionChord(int slot) {
         if (slot < 0 || slot >= SESSION_CHORD_PADS) return;
         boolean same = sessionActiveChord == slot;
-        stopSessionChord();
-        if (same) return;
-        sessionActiveChord = slot;
+        if (same) {
+            stopSessionChord();
+            recordSessionEvent(2, slot);
+            return;
+        }
         recordSessionEvent(1, slot);
+        playSessionChord(slot);
+    }
+
+    // Playback must be deterministic: unlike a UI tap, the same recorded chord
+    // at the next loop boundary always retriggers instead of toggling off.
+    private void playSessionChord(int slot) {
+        stopSessionChord();
+        sessionActiveChord = slot;
         if (sessionChordMode == 0) {
             sessionChordNotes = chordVoicing(sessChordRoot[slot], sessChordType[slot],
                     sessChordBass[slot]);
@@ -4587,7 +4726,9 @@ public final class MainActivity extends Activity {
         long t = System.currentTimeMillis() - sessionLoopStart;
         long len = sessionLoopLenMs();
         if (t < 0 || t > len) return;
-        sessionEvents.add(new int[]{type, index, (int) t});
+        int tick = (int) Math.min(SESSION_LOOP_TICKS - 1,
+                Math.round(t * (double) SESSION_LOOP_TICKS / Math.max(1L, len)));
+        sessionEvents.add(new int[]{type, index, tick});
     }
 
     // Loop button cycles: arm recording → play the captured loop → clear.
@@ -4628,11 +4769,14 @@ public final class MainActivity extends Activity {
                 if (!sessionLoopPlaying || !onSession) return;
                 long t = System.currentTimeMillis() - sessionLoopStart;
                 long len = sessionLoopLenMs();
+                int tick = (int) Math.min(SESSION_LOOP_TICKS,
+                        Math.round(t * (double) SESSION_LOOP_TICKS / Math.max(1L, len)));
                 while (sessionPlayIdx < sessionEvents.size()
-                        && sessionEvents.get(sessionPlayIdx)[2] <= t) {
+                        && sessionEvents.get(sessionPlayIdx)[2] <= tick) {
                     int[] e = sessionEvents.get(sessionPlayIdx++);
                     if (e[0] == 0) hitSessionDrum(e[1], false);
-                    else triggerSessionChordSilentRecord(e[1]);
+                    else if (e[0] == 1) playSessionChord(e[1]);
+                    else stopSessionChord();
                 }
                 if (t >= len) {                     // wrap to the top of the loop
                     sessionLoopStart = System.currentTimeMillis();
@@ -4642,14 +4786,6 @@ public final class MainActivity extends Activity {
             }
         };
         handler.post(sessionLoopPlayer);
-    }
-
-    // Replay a chord hit without re-recording it into the pattern.
-    private void triggerSessionChordSilentRecord(int slot) {
-        boolean was = sessionLoopRec;
-        sessionLoopRec = false;
-        triggerSessionChord(slot);
-        sessionLoopRec = was;
     }
 
     private void stopSessionLoopPlayback() {
@@ -6774,10 +6910,31 @@ public final class MainActivity extends Activity {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         Uri uri = data.getData();
+        if (request == REQ_PICK_SESSION_SFX_FOLDER) {
+            int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            try {
+                getContentResolver().takePersistableUriPermission(
+                        uri, flags | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (SecurityException ignored) { }
+            externalSessionSfxTreeUri = uri.toString();
+            prefs.edit().putString("session_sfx_tree", externalSessionSfxTreeUri).apply();
+            scanExternalSessionSfxFolder();
+            return;
+        }
         if (request == REQ_PICK_PAD_SAMPLE) {
-            if (result == RESULT_OK && data != null && data.getData() != null
-                    && sessionSampleTarget >= 0) {
-                loadPadSampleFromUri(sessionSampleTarget, data.getData());
+            if (sessionSampleTarget >= 0) {
+                int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                try {
+                    getContentResolver().takePersistableUriPermission(uri,
+                            flags | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (SecurityException ignored) { }
+                int idx = sessionSampleTarget;
+                prefs.edit().putString("sess_pad_uri" + idx, uri.toString())
+                        .putString("sess_pad_name" + idx, displayNameFor(uri)).apply();
+                sessionPadHasSample[idx] = false;
+                loadPadSampleAsync(idx, uri, true);
                 sessionSampleTarget = -1;
                 if (onSession) showSession();
             }
@@ -6829,6 +6986,39 @@ public final class MainActivity extends Activity {
         } catch (RuntimeException e) {
             Toast.makeText(this, "No folder picker is available",
                     Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void pickExternalSessionSfxFolder() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        try {
+            startActivityForResult(intent, REQ_PICK_SESSION_SFX_FOLDER);
+        } catch (RuntimeException e) {
+            Toast.makeText(this, "No folder picker is available", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private String sessionSfxLibraryLabel() {
+        if (externalSessionSfxScanning) return "SFX scanning...";
+        if (externalSessionSfxTreeUri == null) return "+ SFX folder";
+        return "SFX " + externalSessionSfxFiles.size();
+    }
+
+    private static final class ExternalSfxFile {
+        final String uri;
+        final String name;
+        final String relativePath;
+        final long size;
+
+        ExternalSfxFile(Uri uri, String name, String relativePath, long size) {
+            this.uri = uri.toString();
+            this.name = name;
+            this.relativePath = relativePath;
+            this.size = size;
         }
     }
 
@@ -7005,6 +7195,245 @@ public final class MainActivity extends Activity {
                 }
             }
         }
+    }
+
+    private void scanExternalSessionSfxFolder() {
+        final String tree = externalSessionSfxTreeUri;
+        final int token = ++externalSessionSfxScanToken;
+        if (tree == null) {
+            externalSessionSfxFiles.clear();
+            return;
+        }
+        externalSessionSfxScanning = true;
+        new Thread(() -> {
+            java.util.ArrayList<ExternalSfxFile> found = new java.util.ArrayList<>();
+            boolean readable = false;
+            try {
+                Uri treeUri = Uri.parse(tree);
+                String rootId = android.provider.DocumentsContract.getTreeDocumentId(treeUri);
+                scanExternalSessionSfxChildren(treeUri, rootId, "", found, 0);
+                readable = true;
+            } catch (Exception ignored) { }
+            final boolean folderReadable = readable;
+            java.util.Collections.sort(found, (a, b) ->
+                    (a.relativePath + a.name).compareToIgnoreCase(b.relativePath + b.name));
+            handler.post(() -> {
+                if (token != externalSessionSfxScanToken) return;
+                externalSessionSfxScanning = false;
+                externalSessionSfxFiles.clear();
+                externalSessionSfxFiles.addAll(found);
+                if (!folderReadable) {
+                    Toast.makeText(this, "SFX folder is unavailable. Choose it again.",
+                            Toast.LENGTH_LONG).show();
+                } else if (pendingSessionSfxPad >= 0) {
+                    int pad = pendingSessionSfxPad;
+                    pendingSessionSfxPad = -1;
+                    showSessionSfxPicker(pad);
+                } else if (onSession) {
+                    Toast.makeText(this, found.size() + " SFX indexed",
+                            Toast.LENGTH_SHORT).show();
+                    showSession();
+                }
+            });
+        }, "session-sfx-scan").start();
+    }
+
+    private void scanExternalSessionSfxChildren(Uri treeUri, String parentId, String path,
+            java.util.List<ExternalSfxFile> found, int depth) {
+        if (depth > 16 || found.size() >= 10000) return;
+        Uri children = android.provider.DocumentsContract
+                .buildChildDocumentsUriUsingTree(treeUri, parentId);
+        String[] projection = {
+                android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+                android.provider.DocumentsContract.Document.COLUMN_SIZE
+        };
+        try (android.database.Cursor cursor = getContentResolver().query(
+                children, projection, null, null, null)) {
+            if (cursor == null) return;
+            while (cursor.moveToNext() && found.size() < 10000) {
+                String id = cursor.getString(0);
+                String name = cursor.getString(1);
+                String mime = cursor.getString(2);
+                long size = cursor.isNull(3) ? -1L : cursor.getLong(3);
+                if (name == null || id == null) continue;
+                if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    scanExternalSessionSfxChildren(
+                            treeUri, id, path + name + "/", found, depth + 1);
+                    continue;
+                }
+                String lower = name.toLowerCase(Locale.US);
+                if (lower.endsWith(".wav") || lower.endsWith(".ogg")
+                        || lower.endsWith(".mp3") || lower.endsWith(".m4a")
+                        || lower.endsWith(".aac") || lower.endsWith(".flac")) {
+                    Uri document = android.provider.DocumentsContract
+                            .buildDocumentUriUsingTree(treeUri, id);
+                    found.add(new ExternalSfxFile(document, name, path, size));
+                }
+            }
+        }
+    }
+
+    private void showSessionSfxPicker(final int padIdx) {
+        if (externalSessionSfxScanning) {
+            pendingSessionSfxPad = padIdx;
+            Toast.makeText(this, "Indexing SFX folder...", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final Dialog dialog = new Dialog(this);
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(dialogSheet());
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(14), dp(16), dp(14));
+
+        TextView title = new TextView(this);
+        title.setText(padIdx >= 0 ? "Choose SFX for pad " + (padIdx + 1) : "External SFX library");
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(18);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        content.addView(title, matchWrap());
+
+        EditText search = new EditText(this);
+        search.setHint("Search EDM, kick, riser, impact, folder...");
+        search.setSingleLine(true);
+        search.setTextColor(COLOR_TEXT);
+        search.setHintTextColor(COLOR_DIM);
+        search.setBackground(panelBackground(COLOR_SURFACE_RAISED, COLOR_BORDER));
+        search.setPadding(dp(12), dp(9), dp(12), dp(9));
+        searchIme(search);
+        content.addView(search, topMargin(matchWrap(), 9));
+
+        TextView status = new TextView(this);
+        status.setTextColor(COLOR_MUTED);
+        status.setTextSize(11);
+        content.addView(status, topMargin(matchWrap(), 5));
+
+        java.util.ArrayList<ExternalSfxFile> filtered = new java.util.ArrayList<>();
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setDividerHeight(dp(4));
+        list.setDivider(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        list.setCacheColorHint(Color.TRANSPARENT);
+        android.widget.BaseAdapter adapter = new android.widget.BaseAdapter() {
+            @Override public int getCount() { return filtered.size(); }
+            @Override public Object getItem(int position) { return filtered.get(position); }
+            @Override public long getItemId(int position) { return position; }
+            @Override public View getView(int position, View convertView,
+                    android.view.ViewGroup parent) {
+                LinearLayout row;
+                TextView name;
+                TextView detail;
+                if (convertView instanceof LinearLayout) {
+                    row = (LinearLayout) convertView;
+                    name = (TextView) row.getChildAt(0);
+                    detail = (TextView) row.getChildAt(1);
+                } else {
+                    row = new LinearLayout(MainActivity.this);
+                    row.setOrientation(LinearLayout.VERTICAL);
+                    row.setPadding(dp(12), dp(8), dp(12), dp(8));
+                    name = new TextView(MainActivity.this);
+                    name.setTextSize(14);
+                    name.setSingleLine(true);
+                    name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    row.addView(name, matchWrap());
+                    detail = new TextView(MainActivity.this);
+                    detail.setTextSize(10);
+                    detail.setSingleLine(true);
+                    detail.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+                    row.addView(detail, topMargin(matchWrap(), 2));
+                }
+                ExternalSfxFile file = filtered.get(position);
+                row.setBackground(moduleBackground(COLOR_SURFACE_RAISED,
+                        COLOR_BORDER, COLOR_TEAL, true));
+                name.setText(file.name);
+                name.setTextColor(COLOR_TEXT);
+                detail.setText(file.relativePath + formatFileSize(file.size));
+                detail.setTextColor(COLOR_MUTED);
+                return row;
+            }
+        };
+        list.setAdapter(adapter);
+        content.addView(list, topMargin(new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(350)), 8));
+
+        TextView change = menuItem("Choose a different SFX folder", () -> {
+            dialog.dismiss();
+            if (padIdx >= 0) pendingSessionSfxPad = padIdx;
+            pickExternalSessionSfxFolder();
+        });
+        content.addView(change, topMargin(matchWrap(), 8));
+
+        Runnable filter = () -> {
+            String query = search.getText().toString().trim().toLowerCase(Locale.US);
+            filtered.clear();
+            for (ExternalSfxFile file : externalSessionSfxFiles) {
+                String searchable = (file.relativePath + file.name).toLowerCase(Locale.US);
+                if (query.isEmpty() || searchable.contains(query)) filtered.add(file);
+            }
+            status.setText(filtered.size() + " of " + externalSessionSfxFiles.size()
+                    + " samples - loaded only when selected");
+            adapter.notifyDataSetChanged();
+        };
+        filter.run();
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable s) { filter.run(); }
+        });
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            ExternalSfxFile file = filtered.get(position);
+            if (padIdx < 0) {
+                showSessionSfxPadTarget(file, dialog);
+                return;
+            }
+            assignSessionSfx(padIdx, file);
+            dialog.dismiss();
+        });
+
+        dialog.setContentView(content);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(dialogWidth(0.90f, 650),
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    private void showSessionSfxPadTarget(ExternalSfxFile file, Dialog browser) {
+        final Dialog dialog = new Dialog(this);
+        if (dialog.getWindow() != null) dialog.getWindow().setBackgroundDrawable(dialogSheet());
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(14), dp(16), dp(14));
+        TextView title = new TextView(this);
+        title.setText("Assign " + file.name);
+        title.setTextColor(COLOR_TEXT);
+        title.setTextSize(17);
+        title.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        content.addView(title, matchWrap());
+        for (int i = 0; i < SESSION_DRUM_PADS; i++) {
+            final int pad = i;
+            content.addView(menuItem("Pad " + (i + 1) + " - " + sessionDrumLabel(i), () -> {
+                assignSessionSfx(pad, file);
+                dialog.dismiss();
+                browser.dismiss();
+            }), topMargin(matchWrap(), i == 0 ? 10 : 5));
+        }
+        dialog.setContentView(content);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(dialogWidth(0.75f, 460),
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    private void assignSessionSfx(int padIdx, ExternalSfxFile file) {
+        sessionPadBank = 0;
+        prefs.edit().putInt("sess_pad_bank", 0)
+                .putString("sess_pad_uri" + padIdx, file.uri)
+                .putString("sess_pad_name" + padIdx, file.name).apply();
+        sessionPadHasSample[padIdx] = false;
+        loadPadSampleAsync(padIdx, Uri.parse(file.uri), true);
+        if (onSession) showSession();
     }
 
     private byte[] readUri(Uri uri) {
@@ -9039,6 +9468,8 @@ public final class MainActivity extends Activity {
             }
             loadChimeSample();
             loadSwellSamples();
+            loadSessionSfxSamples();
+            loadSessionTransitionSamples();
         }, "sf-loader").start();
     }
 
@@ -9050,6 +9481,18 @@ public final class MainActivity extends Activity {
 
     private void loadSwellSamples() {
         for (int i = 0; i < 6; i++) loadOneShotSample("swell_" + (i + 1) + ".wav", i);
+    }
+
+    private void loadSessionSfxSamples() {
+        for (int i = 0; i < SESSION_SFX_ASSETS.length; i++) {
+            loadOneShotSample(SESSION_SFX_ASSETS[i], 14 + i);
+        }
+    }
+
+    private void loadSessionTransitionSamples() {
+        for (int i = 0; i < SESSION_TRANSITION_ASSETS.length; i++) {
+            loadOneShotSample(SESSION_TRANSITION_ASSETS[i], 22 + i);
+        }
     }
 
     private void loadOneShotSample(String assetName, int swellIndex) {

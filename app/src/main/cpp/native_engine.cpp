@@ -1068,6 +1068,21 @@ public:
         }
     }
 
+    // Session pads use one clean one-shot voice, not the five-layer swell
+    // effect. Retriggers overlap and the pad fader is applied per strike.
+    void triggerSessionSample(int index, float gain) {
+        int sample = index + 6;
+        if (index < 0 || sample >= kNumOneShots) return;
+        oneShotGain_[sample].store(clampFloat(gain, 0.0f, 1.25f),
+                std::memory_order_relaxed);
+        int pending = swellPending_[sample].load(std::memory_order_relaxed);
+        while (pending < kMaxSwellGroups
+                && !swellPending_[sample].compare_exchange_weak(
+                        pending, pending + 1, std::memory_order_release,
+                        std::memory_order_relaxed)) {
+        }
+    }
+
     // Audition a single custom-kit source without touching the live kit routing.
     // `code` is a piece source code (HQ/extra slot, 200+drive, 100+GM); the right
     // font is rendered additively for a bounded window after each trigger, so the
@@ -1141,7 +1156,8 @@ public:
     }
 
     void loadSwellSample(int index, const float *data, int frames, int channels, int rate) {
-        if (index < 0 || index >= 6 || data == nullptr || frames <= 0 || channels <= 0) return;
+        if (index < 0 || index >= kNumOneShots || data == nullptr
+                || frames <= 0 || channels <= 0) return;
         std::vector<float> buf(static_cast<size_t>(frames) * 2);
         for (int i = 0; i < frames; ++i) {
             float l = data[static_cast<size_t>(i) * channels];
@@ -1149,10 +1165,13 @@ public:
             buf[static_cast<size_t>(i) * 2] = l;
             buf[static_cast<size_t>(i) * 2 + 1] = r;
         }
-        swellSample_[index] = std::move(buf);
-        swellSampleFrames_[index] = frames;
-        swellSampleRate_[index] = rate > 0 ? rate : 48000;
-        swellReady_[index].store(true, std::memory_order_release);
+        {
+            std::lock_guard<std::mutex> lock(oneShotMutex_);
+            swellSample_[index] = std::move(buf);
+            swellSampleFrames_[index] = frames;
+            swellSampleRate_[index] = rate > 0 ? rate : 48000;
+            swellReady_[index].store(true, std::memory_order_release);
+        }
     }
 
     void setCustomDrum(bool on) {
@@ -2069,6 +2088,10 @@ public:
                         : 0.0f);
                 loopLenShared_[t].store(len);
             }
+            // Session's imported pad samples are clean one-shots mixed after
+            // the SoundFont bus, so their own fader gain is not multiplied by
+            // the looper's 1.60 drum boost. They are still captured by REC.
+            mixSwells(output, numFrames);
             mixMetronome(output, numFrames);
             float outSq = finalizeOutput(output, numFrames);
             pushRecording(output, numFrames);
@@ -3882,12 +3905,18 @@ private:
     }
 
     void mixSwells(float *out, int32_t numFrames) {
+        // A live Session import may replace a pad buffer. Never block the audio
+        // callback for file loading; skip one callback if the constant-time
+        // buffer swap happens at exactly the same moment.
+        std::unique_lock<std::mutex> sampleLock(oneShotMutex_, std::try_to_lock);
+        if (!sampleLock.owns_lock()) return;
         int delay = std::max(1, sampleRate_ / 200);  // 5 ms at the output rate
-        for (int sample = 0; sample < 6; ++sample) {
+        for (int sample = 0; sample < kNumOneShots; ++sample) {
             int pending = swellPending_[sample].exchange(0, std::memory_order_acquire);
             if (!swellReady_[sample].load(std::memory_order_acquire)) continue;
             while (pending-- > 0) {
-                for (int layer = 0; layer < kSwellLayers; ++layer) {
+                int layers = sample < 6 ? kSwellLayers : 1;
+                for (int layer = 0; layer < layers; ++layer) {
                     int voiceIndex = -1;
                     for (int scan = 0; scan < kMaxSwellVoices; ++scan) {
                         int candidate = (swellVoiceCursor_ + scan) % kMaxSwellVoices;
@@ -3909,7 +3938,7 @@ private:
         }
         for (int voiceIndex = 0; voiceIndex < kMaxSwellVoices; ++voiceIndex) {
             SwellVoice &voice = swellVoice_[voiceIndex];
-            if (!voice.active || voice.sample < 0 || voice.sample >= 6) continue;
+            if (!voice.active || voice.sample < 0 || voice.sample >= kNumOneShots) continue;
             int sample = voice.sample, frames = swellSampleFrames_[sample];
             if (frames <= 1) { voice.active = false; continue; }
             const float *s = swellSample_[sample].data();
@@ -3925,7 +3954,9 @@ private:
                 // Five 5 ms-spaced layers reach 125% total: the first is 105%
                 // and each repeat adds 5%. Equal-level copies would produce a
                 // strong metallic comb filter and overload the output.
-                float layerGain = voice.layer == 0 ? 1.05f : 0.05f;
+                float layerGain = sample < 6
+                        ? (voice.layer == 0 ? 1.05f : 0.05f)
+                        : oneShotGain_[sample].load(std::memory_order_relaxed);
                 out[n * 2] += l * layerGain;
                 out[n * 2 + 1] += r * layerGain;
                 voice.pos += step;
@@ -6851,13 +6882,14 @@ private:
     };
     // Slots 0-5 are the Kit Mode swells; 6-13 are the eight Session drum pads,
     // so a user-imported WAV/OGG reuses the same one-shot voice machinery.
-    static constexpr int kNumOneShots = 14;
+    static constexpr int kNumOneShots = 30;
     std::atomic<int> swellPending_[kNumOneShots]{};
     std::atomic<bool> swellReady_[kNumOneShots]{};
+    std::atomic<float> oneShotGain_[kNumOneShots]{};
+    std::mutex oneShotMutex_;
     std::vector<float> swellSample_[kNumOneShots];
     int swellSampleFrames_[kNumOneShots]{};
-    int swellSampleRate_[kNumOneShots]{48000, 48000, 48000, 48000, 48000, 48000,
-            48000, 48000, 48000, 48000, 48000, 48000, 48000, 48000};
+    int swellSampleRate_[kNumOneShots]{};
     SwellVoice swellVoice_[kMaxSwellVoices];
     int swellVoiceCursor_ = 0;
     static constexpr int k808Slot = 1;   // HS TR-808: remap pads with no native sample
@@ -7442,6 +7474,12 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_instrumental_attachment_NativeAudioEngine_nativeTriggerSwell(
         JNIEnv *, jobject, jint index) {
     engine().triggerSwell(static_cast<int>(index));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_instrumental_attachment_NativeAudioEngine_nativeTriggerSessionSample(
+        JNIEnv *, jobject, jint index, jfloat gain) {
+    engine().triggerSessionSample(static_cast<int>(index), static_cast<float>(gain));
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

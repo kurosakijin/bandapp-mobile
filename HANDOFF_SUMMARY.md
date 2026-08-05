@@ -3,13 +3,22 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.104` / version code `375`
+- Current version: `1.1.113` / version code `384`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
   .tools\gradle-9.4.1\bin\gradle.bat --no-daemon assembleDebug
   ```
-- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`
+- Release APK: `app/build/outputs/apk/release/app-release.apk`
+
+## Latest Release - 1.1.113
+
+- Session has two original built-in one-shot banks: Festival SFX and Transition FX.
+- Session can persistently index an external SFX folder containing up to 10,000
+  WAV, OGG, MP3, M4A, AAC, or FLAC files. The browser searches filenames and
+  folder paths; samples remain external and decode only when assigned to a pad.
+- Imported Session pad samples use dedicated sampler slots and restore after an
+  app restart. Chord-loop scheduling now has deterministic start/stop timing.
 
 ## Primary Code
 

@@ -544,6 +544,10 @@ final class NativeAudioEngine {
 
     void triggerSwell(int index) { nativeTriggerSwell(index); }
 
+    void triggerSessionSample(int index, float gain) {
+        nativeTriggerSessionSample(index, gain);
+    }
+
     // True once the selected drum kit's sound is loaded and ready to play.
     boolean drumKitReady() {
         return nativeDrumKitReady();
@@ -835,6 +839,7 @@ final class NativeAudioEngine {
 
     private native void nativeTriggerChimes();
     private native void nativeTriggerSwell(int index);
+    private native void nativeTriggerSessionSample(int index, float gain);
 
     private native boolean nativeDrumKitReady();
     private native boolean nativeDrumNoteHasSound(int note);

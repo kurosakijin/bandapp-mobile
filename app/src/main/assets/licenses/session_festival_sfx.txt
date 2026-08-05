@@ -1,0 +1,8 @@
+Session Festival SFX Bank
+
+Files under assets/session_sfx and assets/session_sfx_2 were procedurally
+synthesized for Instrumental App on 2026-08-05. They contain no samples, stems,
+melodies, vocals, or recordings from Alan Walker, Marshmello, or any other artist.
+
+The generated audio is original project material and may be used, modified, and
+redistributed with Instrumental App.

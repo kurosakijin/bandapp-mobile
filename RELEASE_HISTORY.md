@@ -1,5 +1,10 @@
 # Release History
 
+## 1.1.113 (version code 384) - 2026-08-05
+Session now includes two original lightweight one-shot banks: Festival SFX and Transition FX. One-shot decoding and playback use dedicated sampler slots, imported pad assignments restore reliably, and chord-loop timing starts and stops deterministically.
+
+Large EDM and performance sample collections can now remain outside the APK. Choose a persistent SFX folder from Session, recursively index up to 10,000 WAV, OGG, MP3, M4A, AAC, or FLAC files without preloading them, search by filename or folder category, and assign a selected sound directly to any of the eight pads. Only the assigned sample is decoded on demand.
+
 ## 1.1.112 (version code 383) - 2026-08-04
 Session chord pads are now fully separate from Chord Mode.
 
