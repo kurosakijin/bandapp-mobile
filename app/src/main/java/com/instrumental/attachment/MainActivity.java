@@ -437,6 +437,9 @@ public final class MainActivity extends Activity {
     private final float[] liveControlValues = new float[]{0.62f, 0.52f, 0.58f, 0.56f, 0.60f, 0.72f};
     // Live Controls B (Keyboard B / Sound 2) — independent FX, only when B is on.
     private final float[] liveControlValuesB = new float[]{0.62f, 0.52f, 0.58f, 0.56f, 0.60f, 0.72f};
+    private float pianoFilterSweepA = 1.0f;
+    private float pianoFilterSweepB = 1.0f;
+    private SweepControlView sweepControlA, sweepControlB, sweepControlWhole;
     private LiveControlView liveControlViewB;
     private int liveTab = 0;   // 0 = Keyboard A, 1 = Keyboard B
     private TextView liveTabAButton;
@@ -883,6 +886,10 @@ public final class MainActivity extends Activity {
             liveControlValues[i] = Math.max(0f, Math.min(1f,
                     prefs.getFloat("live_control_" + i, liveControlValues[i])));
         }
+        pianoFilterSweepA = Math.max(0f, Math.min(1f,
+                prefs.getFloat("piano_filter_sweep_a", 1.0f)));
+        pianoFilterSweepB = Math.max(0f, Math.min(1f,
+                prefs.getFloat("piano_filter_sweep_b", 1.0f)));
         virtualGuitarOutputLevel = Math.max(0f, Math.min(1.5f,
                 prefs.getFloat("virtual_guitar_output_level", 1.0f)));
         metalBoostDrive = prefs.getFloat("metal_boost_drive", 0.34f);
@@ -943,6 +950,8 @@ public final class MainActivity extends Activity {
         fullPianoSplitStyle = prefs.getInt("fp_split_style", 0);
         fpSoft = prefs.getFloat("fp_soft", 0f);
         for (int i = 0; i < 6; i++) liveControlValuesB[i] = prefs.getFloat("lcb" + i, liveControlValuesB[i]);
+        engine.setPianoFilterSweepA(pianoFilterSweepA);
+        engine.setPianoFilterSweepB(pianoFilterSweepB);
         fpSplitNote = prefs.getInt("fp_split_note", 60);
         // Migrate existing installs away from the former +/-2-octave default.
         // The marker keeps later user-selected ranges persistent.
@@ -2164,9 +2173,42 @@ public final class MainActivity extends Activity {
         blp.rightMargin = dp(6);
         row.addView(control, blp);
 
+        SweepControlView sweep = new SweepControlView(this);
+        sweep.setAccent(accent);
+        sweep.setValue(bendSide == 2 ? pianoFilterSweepB : pianoFilterSweepA);
+        if (bendSide == 0) sweepControlWhole = sweep;
+        else if (bendSide == 1) sweepControlA = sweep;
+        else sweepControlB = sweep;
+        sweep.setOnChange(value -> setKeyboardFilterSweep(bendSide, value));
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(72),
+                LinearLayout.LayoutParams.MATCH_PARENT);
+        slp.rightMargin = dp(6);
+        row.addView(sweep, slp);
+
         row.addView(board, new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.MATCH_PARENT, 1f));
         return row;
+    }
+
+    private void setKeyboardFilterSweep(int side, float value) {
+        value = Math.max(0f, Math.min(1f, value));
+        SharedPreferences.Editor editor = prefs.edit();
+        if (side == 0) {
+            pianoFilterSweepA = value;
+            pianoFilterSweepB = value;
+            engine.setPianoFilterSweep(value);
+            editor.putFloat("piano_filter_sweep_a", value)
+                    .putFloat("piano_filter_sweep_b", value);
+        } else if (side == 1) {
+            pianoFilterSweepA = value;
+            engine.setPianoFilterSweepA(value);
+            editor.putFloat("piano_filter_sweep_a", value);
+        } else {
+            pianoFilterSweepB = value;
+            engine.setPianoFilterSweepB(value);
+            editor.putFloat("piano_filter_sweep_b", value);
+        }
+        editor.apply();
     }
 
     // A per-manual control cluster: [◄] scroll left · [–]/[+] zoom · [►] scroll
@@ -18101,6 +18143,22 @@ public final class MainActivity extends Activity {
                 } else {
                     engine.setMidiExpression(value);
                 }
+            } else if (controller == 74 && currentMode == InstrumentMode.PIANO) {
+                // Standard MIDI brightness/cutoff controller. A second MIDI
+                // keyboard controls Keyboard B; otherwise the single sweep
+                // follows the whole keyboard.
+                final float sweep = value / 127.0f;
+                final int sweepSide = dualOn && playerIdx == 1 ? 2 : (dualOn ? 1 : 0);
+                setKeyboardFilterSweep(sweepSide, sweep);
+                handler.post(() -> {
+                    if (sweepSide == 0 && sweepControlWhole != null) {
+                        sweepControlWhole.setValue(sweep);
+                    } else if (sweepSide == 1 && sweepControlA != null) {
+                        sweepControlA.setValue(sweep);
+                    } else if (sweepSide == 2 && sweepControlB != null) {
+                        sweepControlB.setValue(sweep);
+                    }
+                });
             } else if (controller == 123 || controller == 120) {  // all notes / sound off
                 engine.setSustainPedal(false);
                 handler.post(() -> {
@@ -18612,6 +18670,100 @@ public final class MainActivity extends Activity {
         } else {
             scroll.addView(root, new ScrollView.LayoutParams(
                     ScrollView.LayoutParams.MATCH_PARENT, ScrollView.LayoutParams.WRAP_CONTENT));
+        }
+    }
+
+    // Separate level-style filter sweep beside the pitch/mod lever. Dragging the
+    // thumb vertically opens or closes the resonant low-pass in real time.
+    private final class SweepControlView extends View {
+        private float value = 1.0f;
+        private float startY, startValue;
+        private int accent = COLOR_TEAL;
+        private FloatSetter onChange;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF rect = new RectF();
+
+        SweepControlView(Context context) {
+            super(context);
+            text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            setFocusable(true);
+        }
+
+        void setAccent(int color) { accent = color; invalidate(); }
+        void setOnChange(FloatSetter setter) { onChange = setter; }
+        void setValue(float amount) {
+            value = Math.max(0f, Math.min(1f, amount));
+            invalidate();
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float d = getResources().getDisplayMetrics().density;
+            float cx = getWidth() * 0.5f;
+            float top = 34f * d;
+            float bottom = getHeight() - 25f * d;
+            float thumbY = bottom - value * Math.max(d, bottom - top);
+
+            paint.setColor(COLOR_SURFACE_RAISED);
+            rect.set(2f * d, 2f * d, getWidth() - 2f * d, getHeight() - 2f * d);
+            canvas.drawRoundRect(rect, 8f * d, 8f * d, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.5f * d);
+            paint.setColor(COLOR_BORDER_STRONG);
+            canvas.drawRoundRect(rect, 8f * d, 8f * d, paint);
+            paint.setStyle(Paint.Style.FILL);
+
+            text.setTextAlign(Paint.Align.CENTER);
+            text.setColor(COLOR_TEXT);
+            text.setTextSize(9f * d);
+            canvas.drawText("SWEEP", cx, 15f * d, text);
+            text.setColor(COLOR_MUTED);
+            text.setTextSize(8f * d);
+            canvas.drawText(Math.round(value * 100f) + "%", cx, 27f * d, text);
+
+            paint.setColor(COLOR_SKY_TRACK);
+            rect.set(cx - 4f * d, top, cx + 4f * d, bottom);
+            canvas.drawRoundRect(rect, 4f * d, 4f * d, paint);
+            paint.setColor(accent);
+            rect.set(cx - 4f * d, thumbY, cx + 4f * d, bottom);
+            canvas.drawRoundRect(rect, 4f * d, 4f * d, paint);
+            paint.setColor(COLOR_SKY_CONTROL);
+            rect.set(cx - 19f * d, thumbY - 7f * d,
+                    cx + 19f * d, thumbY + 7f * d);
+            canvas.drawRoundRect(rect, 5f * d, 5f * d, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.5f * d);
+            paint.setColor(accent);
+            canvas.drawRoundRect(rect, 5f * d, 5f * d, paint);
+            paint.setStyle(Paint.Style.FILL);
+        }
+
+        @Override public boolean onTouchEvent(MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    getParent().requestDisallowInterceptTouchEvent(true);
+                    startY = event.getY();
+                    startValue = value;
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    float range = Math.max(1f, getHeight() - dp(59));
+                    setValue(startValue + (startY - event.getY()) / range);
+                    if (onChange != null) onChange.set(value);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                    performClick();
+                    return true;
+                default:
+                    return true;
+            }
+        }
+
+        @Override public boolean performClick() {
+            super.performClick();
+            return true;
         }
     }
 

@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.113` / version code `384`
+- Current version: `1.1.114` / version code `385`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -11,7 +11,15 @@
   ```
 - Release APK: `app/build/outputs/apk/release/app-release.apk`
 
-## Latest Release - 1.1.113
+## Latest Release - 1.1.114
+
+- Full Keys now has a separate vertical Filter Sweep control beside the combined
+  pitch-bend/vibrato lever. It runs a native resonant low-pass from dark to fully
+  open without interrupting held notes.
+- Keyboard A/B sweeps are independent in split layouts, all active layers follow
+  their side, values persist, and MIDI CC74 drives the matching control.
+
+## Previous Release - 1.1.113
 
 - Session has two original built-in one-shot banks: Festival SFX and Transition FX.
 - Session can persistently index an external SFX folder containing up to 10,000

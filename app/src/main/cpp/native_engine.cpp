@@ -1371,6 +1371,17 @@ public:
         fxChorusB_.store(clampFloat(chorus, 0.0f, 1.0f));
         fxTremB_.store(clampFloat(trem, 0.0f, 1.0f));
     }
+    void setPianoFilterSweep(float amount) {
+        float v = clampFloat(amount, 0.0f, 1.0f);
+        pianoSweepA_.store(v);
+        pianoSweepB_.store(v);
+    }
+    void setPianoFilterSweepA(float amount) {
+        pianoSweepA_.store(clampFloat(amount, 0.0f, 1.0f));
+    }
+    void setPianoFilterSweepB(float amount) {
+        pianoSweepB_.store(clampFloat(amount, 0.0f, 1.0f));
+    }
     void setPianoSoftB(float soft) { fxSoftB_.store(clampFloat(soft, 0.0f, 1.0f)); }
     void setLevelB(float lvl) { levelBCtl_.store(clampFloat(lvl, 0.0f, 1.0f)); }
 
@@ -2631,16 +2642,20 @@ public:
             reverbWasOn_ = reverb;
             float revSend = reverbLevel_.load();
             for (int32_t frame = 0; frame < numFrames; ++frame) {
-                float aL = processPianoFx(output[frame * 2], 0) * level;
-                float aR = processPianoFx(output[frame * 2 + 1], 1) * level;
+                float aL = processPianoSweep(
+                        processPianoFx(output[frame * 2], 0), 0, 0) * level;
+                float aR = processPianoSweep(
+                        processPianoFx(output[frame * 2 + 1], 1), 0, 1) * level;
                 if (pianoGuitarRigA_.load(std::memory_order_relaxed)) {
                     aL = processPianoGuitarRig(aL, 0, 0);
                     aR = processPianoGuitarRig(aR, 0, 1);
                 }
                 float bL = 0.0f, bR = 0.0f;
                 if (splitB) {
-                    bL = processPianoFxB(fxBufB_[frame * 2], 0) * levelB;
-                    bR = processPianoFxB(fxBufB_[frame * 2 + 1], 1) * levelB;
+                    bL = processPianoSweep(
+                            processPianoFxB(fxBufB_[frame * 2], 0), 1, 0) * levelB;
+                    bR = processPianoSweep(
+                            processPianoFxB(fxBufB_[frame * 2 + 1], 1), 1, 1) * levelB;
                     if (pianoGuitarRigB_.load(std::memory_order_relaxed)) {
                         bL = processPianoGuitarRig(bL, 1, 0);
                         bR = processPianoGuitarRig(bR, 1, 1);
@@ -3106,6 +3121,19 @@ private:
         fcB_ = fxChorusB_.load();
         ftrB_ = fxTremB_.load();
         fsB_ = fxSoftB_.load();
+        sweepA_ = pianoSweepA_.load(std::memory_order_relaxed);
+        sweepB_ = pianoSweepB_.load(std::memory_order_relaxed);
+        auto sweepCoefficients = [this](float amount, float &g, float &k) {
+            float cutoff = 90.0f * std::pow(200.0f, amount);
+            float limit = static_cast<float>(sampleRate_ > 0 ? sampleRate_ : 48000) * 0.45f;
+            cutoff = std::min(cutoff, std::min(18000.0f, limit));
+            float q = 0.78f + (1.0f - amount) * 2.7f;
+            g = std::tan(3.14159265f * cutoff
+                    / static_cast<float>(sampleRate_ > 0 ? sampleRate_ : 48000));
+            k = 1.0f / q;
+        };
+        sweepCoefficients(sweepA_, sweepGA_, sweepKA_);
+        sweepCoefficients(sweepB_, sweepGB_, sweepKB_);
     }
 
     // Per-channel so L/R keep independent filter/chorus state for a true stereo
@@ -3164,6 +3192,26 @@ private:
     float processPianoFxB(float x, int ch) {
         return processFxCore(x, ch, ftB_, fsB_, fdB_, fcB_, ftrB_,
                 fxLpB_, fxDelayB_, fxDelayWriteB_, fxChorusPhaseB_, fxTremPhaseB_);
+    }
+
+    // Stable topology-preserving state-variable low-pass used by the keyboard
+    // performance Sweep knob. Cutoff moves exponentially from a dark vowel-like
+    // 90 Hz to an open 18 kHz while resonance falls toward the top of the sweep.
+    float processPianoSweep(float x, int side, int ch) {
+        float amount = side == 0 ? sweepA_ : sweepB_;
+        float g = side == 0 ? sweepGA_ : sweepGB_;
+        float k = side == 0 ? sweepKA_ : sweepKB_;
+        float &ic1 = sweepIc1_[side][ch];
+        float &ic2 = sweepIc2_[side][ch];
+        float a1 = 1.0f / (1.0f + g * (g + k));
+        float v1 = a1 * (ic1 + g * (x - ic2));
+        float v2 = ic2 + g * v1;
+        ic1 = 2.0f * v1 - ic1;
+        ic2 = 2.0f * v2 - ic2;
+        // At the fully open end retain the original signal exactly; crossfade
+        // over the final 8% so moving into bypass cannot click.
+        float openMix = clampFloat((amount - 0.92f) / 0.08f, 0.0f, 1.0f);
+        return v2 * (1.0f - openMix) + x * openMix;
     }
 
     float processPianoGuitarRig(float input, int side, int ch) {
@@ -6974,6 +7022,13 @@ private:
     std::atomic<float> levelBCtl_{0.72f};   // side-B output level knob (0..1)
     float ftB_ = 0.0f, fdB_ = 0.0f, fcB_ = 0.0f, ftrB_ = 0.0f, fsB_ = 0.0f;
     float fxLpB_[2] = {0.0f, 0.0f};
+    std::atomic<float> pianoSweepA_{1.0f};
+    std::atomic<float> pianoSweepB_{1.0f};
+    float sweepA_ = 1.0f, sweepB_ = 1.0f;
+    float sweepGA_ = 1.0f, sweepGB_ = 1.0f;
+    float sweepKA_ = 1.0f, sweepKB_ = 1.0f;
+    float sweepIc1_[2][2]{};
+    float sweepIc2_[2][2]{};
     double fxTremPhaseB_ = 0.0;
     double fxChorusPhaseB_ = 0.0;
     std::array<float, 2048> fxDelayB_[2]{};
@@ -8106,6 +8161,24 @@ Java_com_instrumental_attachment_NativeAudioEngine_nativeSetPianoFxB(
         JNIEnv *, jobject, jfloat tone, jfloat drive, jfloat chorus, jfloat trem) {
     engine().setPianoFxB(static_cast<float>(tone), static_cast<float>(drive),
                          static_cast<float>(chorus), static_cast<float>(trem));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_instrumental_attachment_NativeAudioEngine_nativeSetPianoFilterSweep(
+        JNIEnv *, jobject, jfloat amount) {
+    engine().setPianoFilterSweep(static_cast<float>(amount));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_instrumental_attachment_NativeAudioEngine_nativeSetPianoFilterSweepA(
+        JNIEnv *, jobject, jfloat amount) {
+    engine().setPianoFilterSweepA(static_cast<float>(amount));
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_instrumental_attachment_NativeAudioEngine_nativeSetPianoFilterSweepB(
+        JNIEnv *, jobject, jfloat amount) {
+    engine().setPianoFilterSweepB(static_cast<float>(amount));
 }
 
 extern "C" JNIEXPORT void JNICALL

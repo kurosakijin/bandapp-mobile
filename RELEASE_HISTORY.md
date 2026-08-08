@@ -1,5 +1,8 @@
 # Release History
 
+## 1.1.114 (version code 385) - 2026-08-08
+Add a dedicated vertical Filter Sweep performance control beside the combined pitch-bend/vibrato lever. The native resonant low-pass sweep moves from a dark vowel-like tone to the untouched open sound while notes remain held. Whole-keyboard mode controls both sides; split Keyboard A and B retain independent values, active layers follow their keyboard, settings persist, and hardware MIDI CC74 controls the sweep.
+
 ## 1.1.113 (version code 384) - 2026-08-05
 Session now includes two original lightweight one-shot banks: Festival SFX and Transition FX. One-shot decoding and playback use dedicated sampler slots, imported pad assignments restore reliably, and chord-loop timing starts and stops deterministically.
 

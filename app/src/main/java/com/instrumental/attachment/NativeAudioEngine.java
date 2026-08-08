@@ -583,6 +583,9 @@ final class NativeAudioEngine {
     }
     void setPianoSoft(float soft) { nativeSetPianoSoft(soft); }
     void setPianoFxB(float tone, float drive, float chorus, float trem) { nativeSetPianoFxB(tone, drive, chorus, trem); }
+    void setPianoFilterSweep(float amount) { nativeSetPianoFilterSweep(amount); }
+    void setPianoFilterSweepA(float amount) { nativeSetPianoFilterSweepA(amount); }
+    void setPianoFilterSweepB(float amount) { nativeSetPianoFilterSweepB(amount); }
     void setPianoGuitarRig(boolean onA, boolean onB, int amp, int cab,
             float drive, float tone, float harmonics) {
         nativeSetPianoGuitarRig(onA, onB, amp, cab, drive, tone, harmonics);
@@ -856,6 +859,9 @@ final class NativeAudioEngine {
     private native void nativeSetPianoFx(float tone, float drive, float chorus, float tremolo);
     private native void nativeSetPianoSoft(float soft);
     private native void nativeSetPianoFxB(float tone, float drive, float chorus, float trem);
+    private native void nativeSetPianoFilterSweep(float amount);
+    private native void nativeSetPianoFilterSweepA(float amount);
+    private native void nativeSetPianoFilterSweepB(float amount);
     private native void nativeSetPianoGuitarRig(boolean onA, boolean onB,
             int amp, int cab, float drive, float tone, float harmonics);
     private native void nativeSetVirtualGuitarPlayer(boolean on);
