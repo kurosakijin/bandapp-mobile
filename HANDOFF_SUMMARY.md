@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.117` / version code `388`
+- Current version: `1.1.118` / version code `389`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -11,7 +11,17 @@
   ```
 - Release APK: `app/build/outputs/apk/release/app-release.apk`
 
-## Latest Release - 1.1.117
+## Latest Release - 1.1.118
+
+- Renamed the landing card and controller workspace from `GE100 Remote` to
+  `External Pedal`; GE100 remains the currently supported hardware protocol.
+- Split the private USB permission callback from USB system-state broadcasts so
+  each receiver uses the correct modern Android export behavior.
+- Guarded controller startup, USB access, permission requests, Bluetooth scans,
+  device detach/write races, and executor shutdown so failures remain visible
+  as connection status instead of crashing the app.
+
+## Previous Release - 1.1.117
 
 - Fixed the Full Kit kick becoming silent after moving it in Edit mode.
 - Geometry-only edits now save without rebuilding native drum routes, and the
@@ -19,7 +29,7 @@
 - Routing still refreshes when a piece is added, removed, or assigned a
   different sound.
 
-## Previous Release - 1.1.116
+## Earlier Release - 1.1.116
 
 - Fixed Full Kit custom pieces, especially the kick, becoming silent while an
   assigned SoundFont is still loading.

@@ -1,6 +1,7 @@
 package com.instrumental.attachment;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -41,6 +42,7 @@ import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Minimal GE100 Pro Li transport. It deliberately excludes firmware, factory
@@ -133,21 +135,27 @@ final class Ge100ProController {
     private int presetBatchStart = 1;
     private byte[] globalRaw;
     private List<EffectModule> currentModules = Collections.emptyList();
-    private boolean receiverRegistered;
+    private boolean permissionReceiverRegistered;
+    private boolean usbStateReceiverRegistered;
+    private volatile boolean closed;
     private String transport = "";
 
-    private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
+    private final BroadcastReceiver permissionReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent intent) {
+            UsbDevice device = getUsbDevice(intent);
+            if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
+                    && device != null) {
+                openUsb(device);
+            } else {
+                status("OTG permission was not granted", false, "OTG");
+            }
+        }
+    };
+
+    private final BroadcastReceiver usbStateReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent intent) {
             String action = intent.getAction();
-            if (USB_PERMISSION.equals(action)) {
-                UsbDevice device = getUsbDevice(intent);
-                if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-                        && device != null) {
-                    openUsb(device);
-                } else {
-                    status("OTG permission was not granted", false, "OTG");
-                }
-            } else if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
+            if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
                 UsbDevice device = getUsbDevice(intent);
                 if (isGe100(device)) connectUsb();
             } else if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
@@ -166,32 +174,62 @@ final class Ge100ProController {
         bluetoothAdapter = manager == null ? null : manager.getAdapter();
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     void start() {
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(USB_PERMISSION);
-        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
-        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
-        if (Build.VERSION.SDK_INT >= 33) {
-            context.registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            context.registerReceiver(usbReceiver, filter);
+        closed = false;
+        try {
+            IntentFilter permissionFilter = new IntentFilter(USB_PERMISSION);
+            IntentFilter usbStateFilter = new IntentFilter();
+            usbStateFilter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+            usbStateFilter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+            if (Build.VERSION.SDK_INT >= 33) {
+                context.registerReceiver(permissionReceiver, permissionFilter,
+                        Context.RECEIVER_NOT_EXPORTED);
+                permissionReceiverRegistered = true;
+                context.registerReceiver(usbStateReceiver, usbStateFilter,
+                        Context.RECEIVER_EXPORTED);
+                usbStateReceiverRegistered = true;
+            } else {
+                context.registerReceiver(permissionReceiver, permissionFilter);
+                permissionReceiverRegistered = true;
+                context.registerReceiver(usbStateReceiver, usbStateFilter);
+                usbStateReceiverRegistered = true;
+            }
+        } catch (RuntimeException e) {
+            unregisterReceivers();
+            status("External pedal connection is unavailable on this device", false, "");
+            return;
         }
-        receiverRegistered = true;
         connectUsb();
     }
 
     void connectUsb() {
-        for (UsbDevice device : usbManager.getDeviceList().values()) {
+        if (closed || usbManager == null) {
+            status("USB host control is unavailable on this device", false, "OTG");
+            return;
+        }
+        java.util.Map<String, UsbDevice> devices;
+        try {
+            devices = usbManager.getDeviceList();
+        } catch (RuntimeException e) {
+            status("Could not access connected USB devices", false, "OTG");
+            return;
+        }
+        for (UsbDevice device : devices.values()) {
             if (!isGe100(device)) continue;
-            if (!usbManager.hasPermission(device)) {
-                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-                if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
-                PendingIntent permission = PendingIntent.getBroadcast(context, 7100,
-                        new Intent(USB_PERMISSION).setPackage(context.getPackageName()), flags);
-                status("GE100 Pro found. Allow USB control.", false, "OTG");
-                usbManager.requestPermission(device, permission);
-            } else {
-                openUsb(device);
+            try {
+                if (!usbManager.hasPermission(device)) {
+                    int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                    if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
+                    PendingIntent permission = PendingIntent.getBroadcast(context, 7100,
+                            new Intent(USB_PERMISSION).setPackage(context.getPackageName()), flags);
+                    status("GE100 Pro found. Allow USB control.", false, "OTG");
+                    usbManager.requestPermission(device, permission);
+                } else {
+                    openUsb(device);
+                }
+            } catch (RuntimeException e) {
+                status("Could not request external pedal USB access", false, "OTG");
             }
             return;
         }
@@ -213,9 +251,15 @@ final class Ge100ProController {
             status("Bluetooth LE is unavailable", false, "Bluetooth");
             return;
         }
-        scanner.stopScan(scanCallback);
-        status("Scanning for GE100 Pro Li...", false, "Bluetooth");
-        scanner.startScan(scanCallback);
+        try {
+            scanner.stopScan(scanCallback);
+            status("Scanning for GE100 Pro Li...", false, "Bluetooth");
+            scanner.startScan(scanCallback);
+        } catch (RuntimeException e) {
+            scanner = null;
+            status("Bluetooth scan could not start", false, "Bluetooth");
+            return;
+        }
         main.postDelayed(() -> {
             if (scanner != null && gatt == null) {
                 try { scanner.stopScan(scanCallback); } catch (SecurityException ignored) { }
@@ -283,14 +327,26 @@ final class Ge100ProController {
     }
 
     void close() {
+        closed = true;
         reading = false;
+        main.removeCallbacksAndMessages(null);
         closeUsb(null);
         stopBluetooth();
-        if (receiverRegistered) {
-            try { context.unregisterReceiver(usbReceiver); } catch (IllegalArgumentException ignored) { }
-            receiverRegistered = false;
-        }
+        unregisterReceivers();
         io.shutdownNow();
+    }
+
+    private void unregisterReceivers() {
+        if (permissionReceiverRegistered) {
+            try { context.unregisterReceiver(permissionReceiver); }
+            catch (IllegalArgumentException ignored) { }
+            permissionReceiverRegistered = false;
+        }
+        if (usbStateReceiverRegistered) {
+            try { context.unregisterReceiver(usbStateReceiver); }
+            catch (IllegalArgumentException ignored) { }
+            usbStateReceiverRegistered = false;
+        }
     }
 
     private static UsbDevice getUsbDevice(Intent intent) {
@@ -306,6 +362,7 @@ final class Ge100ProController {
     }
 
     private void openUsb(UsbDevice device) {
+        if (closed || usbManager == null || device == null) return;
         closeUsb(null);
         UsbInterface found = null;
         UsbEndpoint in = null;
@@ -325,8 +382,16 @@ final class Ge100ProController {
             status("GE100 control interface was not found", false, "OTG");
             return;
         }
-        UsbDeviceConnection connection = usbManager.openDevice(device);
-        if (connection == null || !connection.claimInterface(found, true)) {
+        UsbDeviceConnection connection;
+        boolean claimed;
+        try {
+            connection = usbManager.openDevice(device);
+            claimed = connection != null && connection.claimInterface(found, true);
+        } catch (RuntimeException e) {
+            status("Could not open the external pedal USB interface", false, "OTG");
+            return;
+        }
+        if (connection == null || !claimed) {
             if (connection != null) connection.close();
             status("Could not claim GE100 control interface", false, "OTG");
             return;
@@ -345,7 +410,13 @@ final class Ge100ProController {
     private void readUsbLoop() {
         byte[] report = new byte[64];
         while (reading && usbConnection != null && usbIn != null) {
-            int count = usbConnection.bulkTransfer(usbIn, report, report.length, 300);
+            int count;
+            try {
+                count = usbConnection.bulkTransfer(usbIn, report, report.length, 300);
+            } catch (RuntimeException e) {
+                if (reading && !closed) status("External pedal USB connection stopped", false, "OTG");
+                break;
+            }
             if (count <= 0) continue;
             int frameLength = report[0] & 0xFF;
             if (frameLength > 0 && frameLength < count) {
@@ -359,8 +430,10 @@ final class Ge100ProController {
     private void closeUsb(String message) {
         reading = false;
         if (usbConnection != null) {
-            if (usbInterface != null) usbConnection.releaseInterface(usbInterface);
-            usbConnection.close();
+            try {
+                if (usbInterface != null) usbConnection.releaseInterface(usbInterface);
+                usbConnection.close();
+            } catch (RuntimeException ignored) { }
         }
         usbConnection = null;
         usbInterface = null;
@@ -374,8 +447,11 @@ final class Ge100ProController {
     }
 
     private void sendPacket(byte[] packet) {
+        if (closed) return;
         if (usbConnection != null) {
-            io.execute(() -> writeUsb(packet));
+            try {
+                io.execute(() -> writeUsb(packet));
+            } catch (RejectedExecutionException ignored) { }
         } else if (gatt != null && bleWrite != null) {
             queueBle(packet);
         }
@@ -383,17 +459,23 @@ final class Ge100ProController {
 
     private void writeUsb(byte[] packet) {
         for (int offset = 0; offset < packet.length; offset += 63) {
+            if (closed || usbConnection == null || usbInterface == null) return;
             int length = Math.min(63, packet.length - offset);
             byte[] report = new byte[64];
             report[0] = (byte) length;
             System.arraycopy(packet, offset, report, 1, length);
             int sent = -1;
-            if (usbOut != null) {
-                sent = usbConnection.bulkTransfer(usbOut, report, report.length, 300);
-            }
-            if (sent < 0) {
-                sent = usbConnection.controlTransfer(0x21, 0x09, 0x0200,
-                        usbInterface.getId(), report, report.length, 300);
+            try {
+                if (usbOut != null) {
+                    sent = usbConnection.bulkTransfer(usbOut, report, report.length, 300);
+                }
+                if (sent < 0) {
+                    sent = usbConnection.controlTransfer(0x21, 0x09, 0x0200,
+                            usbInterface.getId(), report, report.length, 300);
+                }
+            } catch (RuntimeException e) {
+                status("External pedal OTG write stopped", false, "OTG");
+                return;
             }
             if (sent < 0) {
                 status("GE100 OTG write failed", false, "OTG");

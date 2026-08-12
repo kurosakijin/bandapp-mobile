@@ -1,5 +1,8 @@
 # Release History
 
+## 1.1.118 (version code 389) - 2026-08-12
+Rename the GE100 landing feature and workspace to External Pedal. Fix launch crashes by separating the private USB-permission receiver from privileged USB attach/detach broadcasts, guarding controller startup and unavailable platform services, and containing USB, Bluetooth, permission, detach, and executor-shutdown failures instead of allowing them to terminate the app.
+
 ## 1.1.117 (version code 388) - 2026-08-12
 Fix the Full Kit kick becoming silent after it is moved. Position, size, z-order, and volume-layout edits now persist without clearing and rebuilding the live native drum routing table, and the Edit control toggles in place instead of recreating the Full Kit screen. Adding, removing, or changing a piece's sound still refreshes routing normally.
 

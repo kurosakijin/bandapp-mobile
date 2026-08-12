@@ -64,8 +64,13 @@ public final class Ge100RemoteActivity extends Activity
         super.onCreate(state);
         enterFullscreen();
         buildUi();
-        controller = new Ge100ProController(this, this);
-        controller.start();
+        try {
+            controller = new Ge100ProController(this, this);
+            controller.start();
+        } catch (RuntimeException e) {
+            controller = null;
+            onStatus("External pedal control could not start", false, "");
+        }
     }
 
     @Override protected void onDestroy() {
@@ -89,7 +94,7 @@ public final class Ge100RemoteActivity extends Activity
                     return;
                 }
             }
-            controller.scanBluetooth();
+            if (controller != null) controller.scanBluetooth();
         }
     }
 
@@ -137,9 +142,9 @@ public final class Ge100RemoteActivity extends Activity
 
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        TextView title = text("GE100 Pro Li Remote", 20, INK, true);
+        TextView title = text("External Pedal", 20, INK, true);
         titles.addView(title);
-        titles.addView(text("Live presets and effect chain · BETA", 11, MUTED, false));
+        titles.addView(text("External pedal presets and effect chain · BETA", 11, MUTED, false));
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
         titleLp.leftMargin = dp(10);
@@ -158,7 +163,9 @@ public final class Ge100RemoteActivity extends Activity
         bar.addView(connectionText, statusLp);
 
         Button otgButton = button("OTG", CYAN);
-        otgButton.setOnClickListener(v -> controller.connectUsb());
+        otgButton.setOnClickListener(v -> {
+            if (controller != null) controller.connectUsb();
+        });
         bar.addView(otgButton, new LinearLayout.LayoutParams(dp(72), dp(40)));
         Button bleButton = button("Bluetooth", BLUE);
         bleButton.setOnClickListener(v -> requestBluetoothThenScan());
@@ -168,7 +175,9 @@ public final class Ge100RemoteActivity extends Activity
         Button refresh = button("↻", GREEN);
         refresh.setTextSize(22);
         refresh.setContentDescription("Refresh pedal");
-        refresh.setOnClickListener(v -> controller.refresh());
+        refresh.setOnClickListener(v -> {
+            if (controller != null) controller.refresh();
+        });
         LinearLayout.LayoutParams refreshLp = new LinearLayout.LayoutParams(dp(44), dp(40));
         refreshLp.leftMargin = dp(7);
         bar.addView(refresh, refreshLp);
@@ -314,7 +323,9 @@ public final class Ge100RemoteActivity extends Activity
             }
             @Override public void onStartTrackingTouch(SeekBar seekBar) { }
             @Override public void onStopTrackingTouch(SeekBar seekBar) {
-                if (!updatingLevels) controller.setGlobalLevel(field, seekBar.getProgress());
+                if (!updatingLevels && controller != null) {
+                    controller.setGlobalLevel(field, seekBar.getProgress());
+                }
             }
         });
         return row;
@@ -352,7 +363,9 @@ public final class Ge100RemoteActivity extends Activity
                 tag.setBackground(panel(Color.rgb(68, 87, 109), Color.rgb(68, 87, 109), 6));
                 row.addView(tag, new LinearLayout.LayoutParams(dp(43), dp(22)));
             }
-            row.setOnClickListener(v -> controller.selectPreset(presetIndex));
+            row.setOnClickListener(v -> {
+                if (controller != null) controller.selectPreset(presetIndex);
+            });
             LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, dp(42));
             rowLp.bottomMargin = dp(5);
@@ -395,7 +408,7 @@ public final class Ge100RemoteActivity extends Activity
                     REQUEST_BLUETOOTH);
             return;
         }
-        controller.scanBluetooth();
+        if (controller != null) controller.scanBluetooth();
     }
 
     @Override public void onStatus(String message, boolean connected, String transport) {
@@ -450,7 +463,11 @@ public final class Ge100RemoteActivity extends Activity
             card.addView(modelText, top(dp(2)));
             Button toggle = button(active ? "ON" : "OFF", active ? GREEN : Color.rgb(99, 122, 139));
             toggle.setEnabled(module.valid != 0);
-            toggle.setOnClickListener(v -> controller.setModuleEnabled(module.chainIndex, !active));
+            toggle.setOnClickListener(v -> {
+                if (controller != null) {
+                    controller.setModuleEnabled(module.chainIndex, !active);
+                }
+            });
             card.addView(toggle, new LinearLayout.LayoutParams(dp(72), dp(32)));
             LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(dp(102),
                     LinearLayout.LayoutParams.MATCH_PARENT);

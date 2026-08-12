@@ -12443,7 +12443,7 @@ public final class MainActivity extends Activity {
                 startActivity(new android.content.Intent(this, Ge100RemoteActivity.class))));
 
         TextView icon = new TextView(this);
-        icon.setText("GE");
+        icon.setText("FX");
         icon.setTextColor(Color.WHITE);
         icon.setTextSize(15);
         icon.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
@@ -12457,7 +12457,7 @@ public final class MainActivity extends Activity {
         LinearLayout text = new LinearLayout(this);
         text.setOrientation(LinearLayout.VERTICAL);
         TextView name = new TextView(this);
-        name.setText("GE100 Remote");
+        name.setText("External Pedal");
         name.setTextColor(COLOR_TEXT);
         name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         name.setTextSize(16);
@@ -12465,7 +12465,7 @@ public final class MainActivity extends Activity {
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         text.addView(name, matchWrap());
         TextView desc = new TextView(this);
-        desc.setText("OTG / Bluetooth editor");
+        desc.setText("OTG / Bluetooth pedal editor");
         desc.setTextColor(COLOR_MUTED);
         desc.setTextSize(11);
         desc.setSingleLine(true);

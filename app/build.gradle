@@ -34,8 +34,8 @@ android {
         // screenOrientation locks on large screens and rotates the app to
         // portrait. 35 keeps the landscape lock honored everywhere.
         targetSdk 35
-        versionCode 388
-        versionName "1.1.117"
+        versionCode 389
+        versionName "1.1.118"
 
         externalNativeBuild {
             cmake {
