@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.116` / version code `387`
+- Current version: `1.1.117` / version code `388`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -11,7 +11,15 @@
   ```
 - Release APK: `app/build/outputs/apk/release/app-release.apk`
 
-## Latest Release - 1.1.116
+## Latest Release - 1.1.117
+
+- Fixed the Full Kit kick becoming silent after moving it in Edit mode.
+- Geometry-only edits now save without rebuilding native drum routes, and the
+  Edit control toggles in place without recreating the Full Kit screen.
+- Routing still refreshes when a piece is added, removed, or assigned a
+  different sound.
+
+## Previous Release - 1.1.116
 
 - Fixed Full Kit custom pieces, especially the kick, becoming silent while an
   assigned SoundFont is still loading.
@@ -19,7 +27,7 @@
   from the currently selected kit. Full Kit rebuilds its per-piece routes when
   any assigned SoundFont finishes loading.
 
-## Previous Release - 1.1.115
+## Earlier Release - 1.1.115
 
 - Added a beta `GE100 Remote` landing-page tool for the GE100 Pro Li. It supports
   the verified GE100 USB HID protocol over Android USB OTG and includes a

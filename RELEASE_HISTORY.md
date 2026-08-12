@@ -1,5 +1,8 @@
 # Release History
 
+## 1.1.117 (version code 388) - 2026-08-12
+Fix the Full Kit kick becoming silent after it is moved. Position, size, z-order, and volume-layout edits now persist without clearing and rebuilding the live native drum routing table, and the Edit control toggles in place instead of recreating the Full Kit screen. Adding, removing, or changing a piece's sound still refreshes routing normally.
+
 ## 1.1.116 (version code 387) - 2026-08-12
 Fix Full Kit kick and other custom pieces going silent while their lazily loaded SoundFont is unavailable. Custom pieces temporarily use the selected kit's matching articulation, then Full Kit automatically rebuilds its routes as soon as each assigned SoundFont is ready.
 

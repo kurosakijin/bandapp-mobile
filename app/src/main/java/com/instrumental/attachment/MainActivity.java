@@ -4974,7 +4974,12 @@ public final class MainActivity extends Activity {
         bar.addView(kitBtn, kitLp);
         // Pencil edit toggle (highlighted while editing).
         Button edit = chipButton(kitEditMode ? "✎ Editing" : "✎ Edit");
-        edit.setOnClickListener(v -> { kitEditMode = !kitEditMode; showFullPads(); });
+        edit.setOnClickListener(v -> {
+            kitEditMode = !kitEditMode;
+            if (drumKitView != null) drumKitView.setEditMode(kitEditMode);
+            edit.setText(kitEditMode ? "✎ Editing" : "✎ Edit");
+            styleChipButton(edit, kitEditMode);
+        });
         styleChipButton(edit, kitEditMode);
         LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(dp(112),
                 LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -4991,9 +4996,11 @@ public final class MainActivity extends Activity {
         drumPadsView = null;
         drumKitView = new DrumKitView(this);
         drumKitView.setListener(this::onDrumPad);
-        drumKitView.setEditListener(s -> {
+        drumKitView.setEditListener((s, routingChanged) -> {
             prefs.edit().putString("kit_layout_" + kitLayoutSlot, s).apply();
-            applyDrumKit();   // re-route per-piece sounds when the layout changes
+            if (routingChanged) {
+                applyDrumKit();
+            }
         });
         drumKitView.setPieceEditListener(this::changeKitPieceDialog);
         // Slot 0 inherits the pre-preset single layout ("kit_layout") if present.
@@ -21191,7 +21198,9 @@ public final class MainActivity extends Activity {
         interface PadListener {
             void onPad(int note, float velocity);
         }
-        interface EditListener { void onLayoutChanged(String serialized); }
+        interface EditListener {
+            void onLayoutChanged(String serialized, boolean routingChanged);
+        }
 
         // A realistic kit from the drummer's POV (matches the sketch), drawn FLAT
         // with the photo pads. Sizes track real drum sizes as seen from the
@@ -21430,20 +21439,20 @@ public final class MainActivity extends Activity {
             int i = pieces.indexOf(p);
             if (i >= 0 && i < pieces.size() - 1) {
                 pieces.remove(i); pieces.add(i + 1, p);
-                persist(); invalidate();
+                persist(false); invalidate();
             }
         }
         private void sendBack(Piece p) {
             int i = pieces.indexOf(p);
             if (i > 0) {
                 pieces.remove(i); pieces.add(i - 1, p);
-                persist(); invalidate();
+                persist(false); invalidate();
             }
         }
 
-        private void persist() {
+        private void persist(boolean routingChanged) {
             if (editListener == null) return;
-            editListener.onLayoutChanged(layoutString());
+            editListener.onLayoutChanged(layoutString(), routingChanged);
         }
 
         // The live arrangement in the same format setLayout reads — used by
@@ -21506,7 +21515,7 @@ public final class MainActivity extends Activity {
             selected.name = name == null ? "" : name;
             selected.soundCode = soundCode;
             selected.soundNote = soundNote;
-            persist();
+            persist(true);
             invalidate();
         }
 
@@ -21534,7 +21543,7 @@ public final class MainActivity extends Activity {
             p.soundNote = soundNote;
             pieces.add(p);
             selected = p;
-            persist();
+            persist(true);
             invalidate();
         }
 
@@ -21787,7 +21796,7 @@ public final class MainActivity extends Activity {
                         if (dist(x, y, cx + r, cy - r) <= hr) {          // X = remove
                             pieces.remove(selected);
                             selected = null; dragMode = 0;
-                            persist(); invalidate();
+                            persist(true); invalidate();
                             return true;
                         }
                         if (dist(x, y, cx, cy - r) <= hr) {              // ✎ = change piece
@@ -21838,11 +21847,11 @@ public final class MainActivity extends Activity {
                     }
                     return true;
                 case MotionEvent.ACTION_POINTER_UP:
-                    if (dragMode == 3) { persist(); dragMode = 0; }
+                    if (dragMode == 3) { persist(false); dragMode = 0; }
                     return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
-                    if (dragMode != 0) persist();
+                    if (dragMode != 0) persist(false);
                     dragMode = 0;
                     return true;
             }
