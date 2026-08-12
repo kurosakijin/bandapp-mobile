@@ -1,5 +1,8 @@
 # Release History
 
+## 1.1.116 (version code 387) - 2026-08-12
+Fix Full Kit kick and other custom pieces going silent while their lazily loaded SoundFont is unavailable. Custom pieces temporarily use the selected kit's matching articulation, then Full Kit automatically rebuilds its routes as soon as each assigned SoundFont is ready.
+
 ## 1.1.115 (version code 386) - 2026-08-12
 Add the beta GE100 Pro Li Remote for live pedal control from Android. The new landing-page tool detects the processor over USB OTG or Bluetooth LE, reads and searches all 150 device presets, includes a metal-preset filter, switches presets, controls the device output/input/OTG levels, and displays the active ten-slot signal chain with per-module bypass controls. Capture upload, firmware, delete, rename, and factory-reset commands remain excluded from the mobile controller, while external NAM/MNRS/IR files stay outside the APK.
 

@@ -9947,12 +9947,17 @@ public final class MainActivity extends Activity {
             int category = row.length > 5 ? row[5] : -1;
             if (isChimes == 1) continue;   // WAV chimes fire via onDrumPad, not a font
             if (isSwellSoundCode(code)) continue; // swell WAVs use the direct path
-            int useCode = code >= 0 ? code : selectedCode;
-            int useNote = srcNote >= 0 ? srcNote
-                    : (category >= 0 && category < DrumKitView.KCAT_GM.length
-                            ? defaultKitSourceNote(currentPreset, DrumKitView.KCAT_GM[category])
-                            : defaultKitSourceNote(currentPreset, note));
-            if (code >= 0) ensureDrumSlotForCode(useCode);
+            int defaultNote = category >= 0 && category < DrumKitView.KCAT_GM.length
+                    ? defaultKitSourceNote(currentPreset, DrumKitView.KCAT_GM[category])
+                    : defaultKitSourceNote(currentPreset, note);
+            if (code >= 0) ensureDrumSlotForCode(code);
+
+            // A custom source can be selected before its lazy SoundFont has
+            // finished loading. Native routing cannot play an unloaded slot,
+            // so keep the piece audible from the selected kit in the meantime.
+            boolean customSourceReady = code >= 0 && drumSourceCodeReady(code);
+            int useCode = customSourceReady ? code : selectedCode;
+            int useNote = customSourceReady && srcNote >= 0 ? srcNote : defaultNote;
             engine.setDrumPieceSlot(note, useCode);
             engine.setDrumPieceSrcNote(note, useNote);
             engine.setDrumPieceGain(note, 1.0f);   // VOL is already folded into strike velocity
@@ -9979,6 +9984,20 @@ public final class MainActivity extends Activity {
         if (slot >= FIRST_EXTRA_DRUM_SLOT && slot < TOTAL_DRUM_FONT_SLOTS) {
             ensureExtraDrumFontLoaded(1000 + slot * 100);
         }
+    }
+
+    private boolean drumSourceCodeReady(int code) {
+        if (code < 0 || isSwellSoundCode(code) || code >= KIT_SOUND_SELECTED_BASE) {
+            return true;
+        }
+        if (code >= 100 && code < 200) {
+            return true; // GM bank-128 kits are part of the main SoundFont.
+        }
+        int slot = code >= 200 ? code - 200 : code;
+        if (slot < 0 || slot >= TOTAL_DRUM_FONT_SLOTS) {
+            return false;
+        }
+        return slot < FIRST_EXTRA_DRUM_SLOT || extraDrumFontLoaded[slot];
     }
 
     // The extra kits are intentionally loaded only when selected. Together
@@ -10011,15 +10030,12 @@ public final class MainActivity extends Activity {
                     extraDrumFontLoading[targetSlot] = false;
                     extraDrumFontLoaded[targetSlot] = loaded;
                 }
-                // The selected kit used GM while loading. Switch to its real
-                // font as soon as it is ready, only if it is still selected.
-                if (loaded && currentMode == InstrumentMode.DRUMS
-                        && drumFontSlot(currentPreset.program) == targetSlot) {
+                if (loaded && currentMode == InstrumentMode.DRUMS) {
                     if (onFullPads && drumKitView != null) {
-                        // Default Full Kit pieces encode the selected program.
-                        // Rebuild those routes now that the lazy font exists.
+                        // A selected kit or an individually assigned piece may
+                        // have used the temporary selected-kit fallback.
                         applyDrumKit();
-                    } else {
+                    } else if (drumFontSlot(currentPreset.program) == targetSlot) {
                         engine.setDrumKit(currentPreset.program);
                     }
                 }

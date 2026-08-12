@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.115` / version code `386`
+- Current version: `1.1.116` / version code `387`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -11,7 +11,15 @@
   ```
 - Release APK: `app/build/outputs/apk/release/app-release.apk`
 
-## Latest Release - 1.1.115
+## Latest Release - 1.1.116
+
+- Fixed Full Kit custom pieces, especially the kick, becoming silent while an
+  assigned SoundFont is still loading.
+- Until an assigned source is ready, the piece uses the matching articulation
+  from the currently selected kit. Full Kit rebuilds its per-piece routes when
+  any assigned SoundFont finishes loading.
+
+## Previous Release - 1.1.115
 
 - Added a beta `GE100 Remote` landing-page tool for the GE100 Pro Li. It supports
   the verified GE100 USB HID protocol over Android USB OTG and includes a
@@ -28,7 +36,7 @@
   presets were saved to banks `36A`-`37B` as `5150 Tight`, `Satan Rhythm`,
   `Cali Metal`, `Mark III Rig`, and `Trinity Rig`.
 
-## Previous Release - 1.1.114
+## Earlier Release - 1.1.114
 
 - Full Keys now has a separate vertical Filter Sweep control beside the combined
   pitch-bend/vibrato lever. It runs a native resonant low-pass from dark to fully
