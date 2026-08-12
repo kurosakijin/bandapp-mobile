@@ -1,5 +1,8 @@
 # Release History
 
+## 1.1.119 (version code 390) - 2026-08-12
+Fix the remaining External Pedal launch crash. The workspace previously requested modern fullscreen insets before Android had created its decor view, causing a null WindowInsetsController and immediately returning to the home screen. Fullscreen now activates after the content view is attached and uses the decor view's controller. Verified on Android 15: landing launch, OTG action, and Bluetooth permission flow complete without a fatal exception.
+
 ## 1.1.118 (version code 389) - 2026-08-12
 Rename the GE100 landing feature and workspace to External Pedal. Fix launch crashes by separating the private USB-permission receiver from privileged USB attach/detach broadcasts, guarding controller startup and unavailable platform services, and containing USB, Bluetooth, permission, detach, and executor-shutdown failures instead of allowing them to terminate the app.
 

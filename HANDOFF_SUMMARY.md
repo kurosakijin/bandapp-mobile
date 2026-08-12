@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.118` / version code `389`
+- Current version: `1.1.119` / version code `390`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -11,7 +11,17 @@
   ```
 - Release APK: `app/build/outputs/apk/release/app-release.apk`
 
-## Latest Release - 1.1.118
+## Latest Release - 1.1.119
+
+- Fixed the actual External Pedal launch crash: `enterFullscreen()` accessed the
+  window insets controller before Android created the activity decor view.
+- Fullscreen now runs after `setContentView` and reads the controller from the
+  attached decor view.
+- Reproduced and verified on an Android 15 emulator: the landing card opens the
+  workspace, OTG remains stable without a device, Bluetooth opens its runtime
+  permission flow, and logcat reports no fatal exception.
+
+## Previous Release - 1.1.118
 
 - Renamed the landing card and controller workspace from `GE100 Remote` to
   `External Pedal`; GE100 remains the currently supported hardware protocol.
@@ -21,7 +31,7 @@
   device detach/write races, and executor shutdown so failures remain visible
   as connection status instead of crashing the app.
 
-## Previous Release - 1.1.117
+## Earlier Release - 1.1.117
 
 - Fixed the Full Kit kick becoming silent after moving it in Edit mode.
 - Geometry-only edits now save without rebuilding native drum routes, and the

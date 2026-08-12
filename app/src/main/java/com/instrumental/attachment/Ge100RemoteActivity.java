@@ -62,8 +62,8 @@ public final class Ge100RemoteActivity extends Activity
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
-        enterFullscreen();
         buildUi();
+        getWindow().getDecorView().post(this::enterFullscreen);
         try {
             controller = new Ge100ProController(this, this);
             controller.start();
@@ -479,10 +479,12 @@ public final class Ge100RemoteActivity extends Activity
     @SuppressWarnings("deprecation")
     private void enterFullscreen() {
         if (Build.VERSION.SDK_INT >= 30) {
-            if (getWindow().getInsetsController() != null) {
-                getWindow().getInsetsController().hide(WindowInsets.Type.statusBars()
+            android.view.WindowInsetsController insets = getWindow().getDecorView()
+                    .getWindowInsetsController();
+            if (insets != null) {
+                insets.hide(WindowInsets.Type.statusBars()
                         | WindowInsets.Type.navigationBars());
-                getWindow().getInsetsController().setSystemBarsBehavior(
+                insets.setSystemBarsBehavior(
                         android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         } else {
