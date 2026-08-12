@@ -19,6 +19,7 @@ desktop/
 images/
 drum kit extra/
 external soundfonts/
+external captures/
 soundfont-downloads/
 *.log
 ui-preview*.png

@@ -1,5 +1,8 @@
 # Release History
 
+## 1.1.115 (version code 386) - 2026-08-12
+Add the beta GE100 Pro Li Remote for live pedal control from Android. The new landing-page tool detects the processor over USB OTG or Bluetooth LE, reads and searches all 150 device presets, includes a metal-preset filter, switches presets, controls the device output/input/OTG levels, and displays the active ten-slot signal chain with per-module bypass controls. Capture upload, firmware, delete, rename, and factory-reset commands remain excluded from the mobile controller, while external NAM/MNRS/IR files stay outside the APK.
+
 ## 1.1.114 (version code 385) - 2026-08-08
 Add a dedicated vertical Filter Sweep performance control beside the combined pitch-bend/vibrato lever. The native resonant low-pass sweep moves from a dark vowel-like tone to the untouched open sound while notes remain held. Whole-keyboard mode controls both sides; split Keyboard A and B retain independent values, active layers follow their keyboard, settings persist, and hardware MIDI CC74 controls the sweep.
 

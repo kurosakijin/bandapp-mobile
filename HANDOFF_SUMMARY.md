@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.114` / version code `385`
+- Current version: `1.1.115` / version code `386`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -11,7 +11,24 @@
   ```
 - Release APK: `app/build/outputs/apk/release/app-release.apk`
 
-## Latest Release - 1.1.114
+## Latest Release - 1.1.115
+
+- Added a beta `GE100 Remote` landing-page tool for the GE100 Pro Li. It supports
+  the verified GE100 USB HID protocol over Android USB OTG and includes a
+  Bluetooth LE transport for compatible pedal firmware.
+- The remote reads and searches all 150 on-device presets, filters likely metal
+  patches, changes the active preset, controls output/input/OTG levels using the
+  device's real ranges, and shows the ten-slot chain with live bypass toggles.
+- Destructive or storage-heavy operations are deliberately absent: no firmware,
+  factory reset, delete, rename, or capture upload. NAM/MNRS/IR files remain
+  external and are managed with MOOER Studio.
+- Hardware setup performed separately from the APK: user capture slots contain
+  Precision Drive Boost plus EVH 5150 III, Satan High Gain, Cali High Gain,
+  Mesa Mark III High Gain, and Mezzabarba Trinity captures. Verified playable
+  presets were saved to banks `36A`-`37B` as `5150 Tight`, `Satan Rhythm`,
+  `Cali Metal`, `Mark III Rig`, and `Trinity Rig`.
+
+## Previous Release - 1.1.114
 
 - Full Keys now has a separate vertical Filter Sweep control beside the combined
   pitch-bend/vibrato lever. It runs a native resonant low-pass from dark to fully
@@ -19,7 +36,7 @@
 - Keyboard A/B sweeps are independent in split layouts, all active layers follow
   their side, values persist, and MIDI CC74 drives the matching control.
 
-## Previous Release - 1.1.113
+## Earlier Release - 1.1.113
 
 - Session has two original built-in one-shot banks: Festival SFX and Transition FX.
 - Session can persistently index an external SFX folder containing up to 10,000

@@ -1332,7 +1332,7 @@ public final class MainActivity extends Activity {
         LinearLayout row2 = new LinearLayout(this);
         row2.setOrientation(LinearLayout.HORIZONTAL);
         View[] features = {buildSessionCard(), buildLoopMixCard(), buildVocalsCard(),
-                buildGuitarKeysCard()};
+                buildGuitarKeysCard(), buildGe100RemoteCard()};
         for (int i = 0; i < features.length; i++) {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.MATCH_PARENT, 1f);
@@ -12408,6 +12408,53 @@ public final class MainActivity extends Activity {
     }
 
     private static final int VOX_CYAN = Color.rgb(84, 200, 232);
+
+    private View buildGe100RemoteCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(12), dp(12), dp(12), dp(12));
+        card.setBackground(landingButtonBackground(COLOR_TEAL));
+        card.setClickable(true);
+        card.setOnClickListener(v -> launchFromLanding(card, () ->
+                startActivity(new android.content.Intent(this, Ge100RemoteActivity.class))));
+
+        TextView icon = new TextView(this);
+        icon.setText("GE");
+        icon.setTextColor(Color.WHITE);
+        icon.setTextSize(15);
+        icon.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        icon.setGravity(Gravity.CENTER);
+        GradientDrawable iconBg = new GradientDrawable();
+        iconBg.setColor(Color.rgb(25, 111, 169));
+        iconBg.setCornerRadius(dp(8));
+        icon.setBackground(iconBg);
+        card.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.VERTICAL);
+        TextView name = new TextView(this);
+        name.setText("GE100 Remote");
+        name.setTextColor(COLOR_TEXT);
+        name.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        name.setTextSize(16);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        text.addView(name, matchWrap());
+        TextView desc = new TextView(this);
+        desc.setText("OTG / Bluetooth editor");
+        desc.setTextColor(COLOR_MUTED);
+        desc.setTextSize(11);
+        desc.setSingleLine(true);
+        desc.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        text.addView(desc, topMargin(matchWrap(), 2));
+        LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        tlp.leftMargin = dp(10);
+        text.addView(betaBadge(), topMargin(matchWrap(), 4));
+        card.addView(text, tlp);
+        return card;
+    }
 
     private View buildVocalsCard() {
         LinearLayout card = new LinearLayout(this);
