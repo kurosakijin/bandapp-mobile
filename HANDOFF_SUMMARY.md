@@ -3,7 +3,7 @@
 ## Project
 
 - Android app: `com.instrumental.attachment`
-- Current version: `1.1.119` / version code `390`
+- Current version: `1.1.120` / version code `391`
 - Android: min SDK 26, target SDK 35, compile SDK 37
 - Build command:
   ```powershell
@@ -11,7 +11,22 @@
   ```
 - Release APK: `app/build/outputs/apk/release/app-release.apk`
 
-## Latest Release - 1.1.119
+## Latest Release - 1.1.120
+
+- Fixed External Pedal sessions that connected over OTG or Bluetooth but never
+  loaded presets, levels, or the device signal chain.
+- OTG now uses independent reader and writer workers and selects a usable HID
+  interface, so refresh and control commands can run while input is monitored.
+- Bluetooth now completes discovery and notification setup in order, probes
+  compatible service-local write/notify channel pairs, and cleans up stale
+  transports when switching connection methods.
+- The workspace reports ready only after receiving a valid framed response from
+  the pedal. A handshake timeout keeps unsupported connections visible instead
+  of presenting them as synchronized.
+- Verified the signed ARM64 release build and Android 15 workspace, OTG,
+  Bluetooth, and refresh actions without a fatal exception.
+
+## Previous Release - 1.1.119
 
 - Fixed the actual External Pedal launch crash: `enterFullscreen()` accessed the
   window insets controller before Android created the activity decor view.
@@ -21,7 +36,7 @@
   workspace, OTG remains stable without a device, Bluetooth opens its runtime
   permission flow, and logcat reports no fatal exception.
 
-## Previous Release - 1.1.118
+## Earlier Release - 1.1.118
 
 - Renamed the landing card and controller workspace from `GE100 Remote` to
   `External Pedal`; GE100 remains the currently supported hardware protocol.

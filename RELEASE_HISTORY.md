@@ -1,5 +1,8 @@
 # Release History
 
+## 1.1.120 (version code 391) - 2026-08-13
+Fix External Pedal sessions that linked but never loaded device data. OTG reads and writes now run independently, a usable HID interface is selected, Bluetooth discovery and notification setup are serialized, compatible write/notify channels are probed safely, stale transports are closed, and the workspace reports ready only after a valid pedal response. Verified with a signed ARM64 release build and Android 15 workspace/connection actions without a fatal exception.
+
 ## 1.1.119 (version code 390) - 2026-08-12
 Fix the remaining External Pedal launch crash. The workspace previously requested modern fullscreen insets before Android had created its decor view, causing a null WindowInsetsController and immediately returning to the home screen. Fullscreen now activates after the content view is attached and uses the decor view's controller. Verified on Android 15: landing launch, OTG action, and Bluetooth permission flow complete without a fatal exception.
 

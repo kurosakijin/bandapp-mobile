@@ -114,12 +114,14 @@ final class Ge100ProController {
     private final Context context;
     private final Listener listener;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final ExecutorService usbReader = Executors.newSingleThreadExecutor();
+    private final ExecutorService writes = Executors.newSingleThreadExecutor();
     private final UsbManager usbManager;
     private final BluetoothAdapter bluetoothAdapter;
     private final ByteArrayOutputStream incoming = new ByteArrayOutputStream();
     private final List<String> presets = new ArrayList<>(Collections.nCopies(150, "EMPTY"));
     private final Queue<byte[]> bleWrites = new ArrayDeque<>();
+    private final List<BleChannel> bleChannels = new ArrayList<>();
 
     private UsbDeviceConnection usbConnection;
     private UsbInterface usbInterface;
@@ -130,6 +132,7 @@ final class Ge100ProController {
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic bleWrite;
     private BluetoothGattCharacteristic bleNotify;
+    private int bleChannelIndex = -1;
     private boolean bleWriting;
     private int blePayload = 20;
     private int presetBatchStart = 1;
@@ -138,7 +141,20 @@ final class Ge100ProController {
     private boolean permissionReceiverRegistered;
     private boolean usbStateReceiverRegistered;
     private volatile boolean closed;
+    private volatile boolean protocolReady;
+    private volatile int handshakeGeneration;
     private String transport = "";
+
+    private static final class BleChannel {
+        final BluetoothGattCharacteristic write;
+        final BluetoothGattCharacteristic notify;
+
+        BleChannel(BluetoothGattCharacteristic write,
+                   BluetoothGattCharacteristic notify) {
+            this.write = write;
+            this.notify = notify;
+        }
+    }
 
     private final BroadcastReceiver permissionReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent intent) {
@@ -217,6 +233,7 @@ final class Ge100ProController {
         }
         for (UsbDevice device : devices.values()) {
             if (!isGe100(device)) continue;
+            stopBluetooth();
             try {
                 if (!usbManager.hasPermission(device)) {
                     int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -246,6 +263,8 @@ final class Ge100ProController {
             status("Turn Bluetooth on, then scan again", false, "Bluetooth");
             return;
         }
+        closeUsb(null);
+        stopBluetooth();
         scanner = bluetoothAdapter.getBluetoothLeScanner();
         if (scanner == null) {
             status("Bluetooth LE is unavailable", false, "Bluetooth");
@@ -269,7 +288,10 @@ final class Ge100ProController {
     }
 
     void refresh() {
-        if (!isConnected()) return;
+        if (!hasTransport()) {
+            status("Connect the pedal before refreshing", false, transport);
+            return;
+        }
         Collections.fill(presets, "EMPTY");
         presetBatchStart = 1;
         sendCommand(0x11);
@@ -323,6 +345,10 @@ final class Ge100ProController {
     }
 
     boolean isConnected() {
+        return protocolReady && hasTransport();
+    }
+
+    private boolean hasTransport() {
         return usbConnection != null || (gatt != null && bleWrite != null);
     }
 
@@ -333,7 +359,8 @@ final class Ge100ProController {
         closeUsb(null);
         stopBluetooth();
         unregisterReceivers();
-        io.shutdownNow();
+        usbReader.shutdownNow();
+        writes.shutdownNow();
     }
 
     private void unregisterReceivers() {
@@ -370,13 +397,18 @@ final class Ge100ProController {
         for (int i = 0; i < device.getInterfaceCount(); i++) {
             UsbInterface candidate = device.getInterface(i);
             if (candidate.getInterfaceClass() != UsbConstants.USB_CLASS_HID) continue;
-            found = candidate;
+            UsbEndpoint candidateIn = null;
+            UsbEndpoint candidateOut = null;
             for (int e = 0; e < candidate.getEndpointCount(); e++) {
                 UsbEndpoint endpoint = candidate.getEndpoint(e);
-                if (endpoint.getDirection() == UsbConstants.USB_DIR_IN) in = endpoint;
-                else out = endpoint;
+                if (endpoint.getDirection() == UsbConstants.USB_DIR_IN) candidateIn = endpoint;
+                else candidateOut = endpoint;
             }
-            break;
+            if (candidateIn == null) continue;
+            found = candidate;
+            in = candidateIn;
+            out = candidateOut;
+            if (candidateOut != null) break;
         }
         if (found == null) {
             status("GE100 control interface was not found", false, "OTG");
@@ -401,18 +433,20 @@ final class Ge100ProController {
         usbIn = in;
         usbOut = out;
         transport = "OTG";
-        status("Connected to GE100 Pro Li", true, transport);
+        beginHandshake("OTG");
         reading = true;
-        io.execute(this::readUsbLoop);
+        UsbDeviceConnection activeConnection = connection;
+        UsbEndpoint activeInput = in;
+        usbReader.execute(() -> readUsbLoop(activeConnection, activeInput));
         refresh();
     }
 
-    private void readUsbLoop() {
+    private void readUsbLoop(UsbDeviceConnection connection, UsbEndpoint input) {
         byte[] report = new byte[64];
-        while (reading && usbConnection != null && usbIn != null) {
+        while (reading && usbConnection == connection && input != null) {
             int count;
             try {
-                count = usbConnection.bulkTransfer(usbIn, report, report.length, 300);
+                count = connection.bulkTransfer(input, report, report.length, 300);
             } catch (RuntimeException e) {
                 if (reading && !closed) status("External pedal USB connection stopped", false, "OTG");
                 break;
@@ -429,6 +463,8 @@ final class Ge100ProController {
 
     private void closeUsb(String message) {
         reading = false;
+        protocolReady = false;
+        handshakeGeneration++;
         if (usbConnection != null) {
             try {
                 if (usbInterface != null) usbConnection.releaseInterface(usbInterface);
@@ -450,7 +486,7 @@ final class Ge100ProController {
         if (closed) return;
         if (usbConnection != null) {
             try {
-                io.execute(() -> writeUsb(packet));
+                writes.execute(() -> writeUsb(packet));
             } catch (RejectedExecutionException ignored) { }
         } else if (gatt != null && bleWrite != null) {
             queueBle(packet);
@@ -548,6 +584,10 @@ final class Ge100ProController {
     }
 
     private void handlePacket(int command, byte[] data) {
+        if (!protocolReady) {
+            protocolReady = true;
+            status("GE100 Pro Li ready", true, transport);
+        }
         if (command == 0x12 && data.length >= 44) {
             globalRaw = Arrays.copyOf(data, 44);
             GlobalParameters globals = new GlobalParameters(globalRaw);
@@ -605,6 +645,8 @@ final class Ge100ProController {
 
     @SuppressWarnings("MissingPermission")
     private void stopBluetooth() {
+        protocolReady = false;
+        handshakeGeneration++;
         if (scanner != null) {
             try { scanner.stopScan(scanCallback); } catch (SecurityException ignored) { }
         }
@@ -615,6 +657,8 @@ final class Ge100ProController {
         gatt = null;
         bleWrite = null;
         bleNotify = null;
+        bleChannels.clear();
+        bleChannelIndex = -1;
         synchronized (bleWrites) { bleWrites.clear(); bleWriting = false; }
     }
 
@@ -659,12 +703,26 @@ final class Ge100ProController {
         @Override public void onConnectionStateChange(BluetoothGatt bluetoothGatt,
                                                        int statusCode, int newState) {
             if (newState == BluetoothProfile.STATE_CONNECTED) {
+                if (statusCode != BluetoothGatt.GATT_SUCCESS) {
+                    status("Pedal Bluetooth connection failed (" + statusCode + ")",
+                            false, "Bluetooth");
+                    return;
+                }
                 transport = "Bluetooth";
-                bluetoothGatt.requestMtu(185);
-                bluetoothGatt.discoverServices();
+                protocolReady = false;
+                status("Bluetooth link found. Discovering pedal control...", false, "Bluetooth");
+                if (!bluetoothGatt.discoverServices()) {
+                    status("Could not start pedal Bluetooth service discovery",
+                            false, "Bluetooth");
+                }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 bleWrite = null;
                 bleNotify = null;
+                protocolReady = false;
+                handshakeGeneration++;
+                synchronized (bleWrites) { bleWrites.clear(); bleWriting = false; }
+                try { bluetoothGatt.close(); } catch (SecurityException ignored) { }
+                if (gatt == bluetoothGatt) gatt = null;
                 status("GE100 Bluetooth disconnected", false, "Bluetooth");
             }
         }
@@ -679,43 +737,62 @@ final class Ge100ProController {
                 status("Could not read GE100 Bluetooth services", false, "Bluetooth");
                 return;
             }
+            bleChannels.clear();
             for (BluetoothGattService service : bluetoothGatt.getServices()) {
-                BluetoothGattCharacteristic localWrite = null;
-                BluetoothGattCharacteristic localNotify = null;
+                List<BluetoothGattCharacteristic> serviceWrites = new ArrayList<>();
+                List<BluetoothGattCharacteristic> serviceNotifies = new ArrayList<>();
                 for (BluetoothGattCharacteristic c : service.getCharacteristics()) {
                     int p = c.getProperties();
-                    if (localWrite == null && (p & (BluetoothGattCharacteristic.PROPERTY_WRITE
+                    if ((p & (BluetoothGattCharacteristic.PROPERTY_WRITE
                             | BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) != 0) {
-                        localWrite = c;
+                        serviceWrites.add(c);
                     }
-                    if (localNotify == null && (p & (BluetoothGattCharacteristic.PROPERTY_NOTIFY
+                    if ((p & (BluetoothGattCharacteristic.PROPERTY_NOTIFY
                             | BluetoothGattCharacteristic.PROPERTY_INDICATE)) != 0) {
-                        localNotify = c;
+                        serviceNotifies.add(c);
                     }
                 }
-                if (localWrite != null && localNotify != null) {
-                    bleWrite = localWrite;
-                    bleNotify = localNotify;
-                    break;
+                for (BluetoothGattCharacteristic write : serviceWrites) {
+                    if (serviceNotifies.contains(write)) {
+                        addBleChannel(write, write);
+                    }
+                }
+                for (BluetoothGattCharacteristic write : serviceWrites) {
+                    for (BluetoothGattCharacteristic notify : serviceNotifies) {
+                        if (write != notify) addBleChannel(write, notify);
+                    }
                 }
             }
-            if (bleWrite == null || bleNotify == null) {
+            if (bleChannels.isEmpty()) {
                 status("GE100 Bluetooth control service is unsupported", false, "Bluetooth");
                 return;
             }
-            bluetoothGatt.setCharacteristicNotification(bleNotify, true);
-            BluetoothGattDescriptor descriptor = bleNotify.getDescriptor(CLIENT_CONFIG);
-            if (descriptor != null) {
-                descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
-                bluetoothGatt.writeDescriptor(descriptor);
+            activateBleChannel(0);
+        }
+
+        @Override public void onDescriptorWrite(BluetoothGatt bluetoothGatt,
+                                                 BluetoothGattDescriptor descriptor,
+                                                 int statusCode) {
+            if (CLIENT_CONFIG.equals(descriptor.getUuid())) {
+                if (descriptor.getCharacteristic() != bleNotify) return;
+                if (statusCode == BluetoothGatt.GATT_SUCCESS) beginBluetoothSync();
+                else if (!tryNextBleChannel()) {
+                    status("Pedal Bluetooth notifications were rejected", false, "Bluetooth");
+                }
             }
-            status("Connected to GE100 Pro Li", true, "Bluetooth");
-            main.postDelayed(Ge100ProController.this::refresh, 180);
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt bluetoothGatt,
                                                        BluetoothGattCharacteristic characteristic) {
-            appendIncoming(characteristic.getValue());
+            if (characteristic == bleNotify) appendIncoming(characteristic.getValue());
+        }
+
+        @Override public void onCharacteristicChanged(BluetoothGatt bluetoothGatt,
+                                                       BluetoothGattCharacteristic characteristic,
+                                                       byte[] value) {
+            if (characteristic == bleNotify) {
+                appendIncoming(Arrays.copyOf(value, value.length));
+            }
         }
 
         @Override public void onCharacteristicWrite(BluetoothGatt bluetoothGatt,
@@ -725,6 +802,69 @@ final class Ge100ProController {
             writeNextBle();
         }
     };
+
+    private void addBleChannel(BluetoothGattCharacteristic write,
+                               BluetoothGattCharacteristic notify) {
+        for (BleChannel channel : bleChannels) {
+            if (channel.write == write && channel.notify == notify) return;
+        }
+        bleChannels.add(new BleChannel(write, notify));
+    }
+
+    @SuppressWarnings("MissingPermission")
+    private void activateBleChannel(int index) {
+        if (gatt == null || index < 0 || index >= bleChannels.size()) return;
+        bleChannelIndex = index;
+        BleChannel channel = bleChannels.get(index);
+        bleWrite = channel.write;
+        bleNotify = channel.notify;
+        synchronized (bleWrites) { bleWrites.clear(); bleWriting = false; }
+        status("Trying pedal Bluetooth control channel " + (index + 1) + "/"
+                + bleChannels.size() + "...", false, "Bluetooth");
+        if (!gatt.setCharacteristicNotification(bleNotify, true)) {
+            tryNextBleChannel();
+            return;
+        }
+        BluetoothGattDescriptor descriptor = bleNotify.getDescriptor(CLIENT_CONFIG);
+        if (descriptor == null) {
+            beginBluetoothSync();
+            return;
+        }
+        descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
+        if (!gatt.writeDescriptor(descriptor)) tryNextBleChannel();
+    }
+
+    private boolean tryNextBleChannel() {
+        int next = bleChannelIndex + 1;
+        if (gatt == null || next >= bleChannels.size()) return false;
+        activateBleChannel(next);
+        return true;
+    }
+
+    private void beginBluetoothSync() {
+        beginHandshake("Bluetooth");
+        main.postDelayed(this::refresh, 100);
+    }
+
+    private void beginHandshake(String link) {
+        protocolReady = false;
+        globalRaw = null;
+        currentModules = Collections.emptyList();
+        synchronized (this) { incoming.reset(); }
+        int generation = ++handshakeGeneration;
+        status(link + " control linked. Syncing pedal...", false, link);
+        main.post(() -> {
+            listener.onPresetNames(Collections.emptyList());
+            listener.onEffectChain(Collections.emptyList());
+        });
+        main.postDelayed(() -> {
+            if (!closed && !protocolReady && generation == handshakeGeneration && hasTransport()) {
+                if ("Bluetooth".equals(link) && tryNextBleChannel()) return;
+                status("Pedal linked but did not answer. Close MOOER Cloud and retry " + link + ".",
+                        false, link);
+            }
+        }, 3000);
+    }
 
     private void queueBle(byte[] packet) {
         synchronized (bleWrites) {
